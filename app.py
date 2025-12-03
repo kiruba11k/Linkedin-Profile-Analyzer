@@ -7,58 +7,44 @@ import time
 # --- API Functions (DEFINED FIRST) ---
 def fetch_apify_data(profile_url: str, api_key: str) -> dict:
     """
-    Fetch LinkedIn profile data using the correct endpoint for
-    apimaestro~linkedin-profile-detail actor.
+    Fetch LinkedIn profile data using synchronous endpoint.
     """
     try:
-        # Use the synchronous endpoint that returns dataset items immediately
-        endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-profile-detail/run-sync-get-dataset-items"
+        # CORRECT SYNCHRONOUS ENDPOINT
+        endpoint = f"https://api.apify.com/v2/acts/apimaestro~linkedin-profile-detail/run-sync-get-dataset-items?token={api_key}"
         
-        # Extract username from LinkedIn URL (the part after '/in/')
-        # Example: https://linkedin.com/in/john-doe -> username = "john-doe"
-        if "/in/" in profile_url:
-            username = profile_url.split("/in/")[-1].strip("/")
-        else:
-            username = profile_url  # Assume it's already a username
+        # Extract username from URL
+        username = profile_url.split("/in/")[-1].strip("/") if "/in/" in profile_url else profile_url
         
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # CORRECT INPUT FORMAT - uses "username" parameter[citation:3][citation:8]
         payload = {
             "username": username,
-            "includeEmail": False  # Set to True if you want email scraping
+            "includeEmail": False
         }
         
-        with st.spinner(f"Fetching data for {username}..."):
-            response = requests.post(
-                endpoint,
-                headers=headers,
-                json=payload,
-                timeout=120
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Handle response format - should be a list of items
-                if isinstance(data, list) and len(data) > 0:
-                    return data[0]
-                elif isinstance(data, dict):
-                    return data
-                else:
-                    st.warning(f"Unexpected response format: {type(data)}")
-                    return None
-            else:
-                st.error(f"API Error {response.status_code}: {response.text[:200]}")
-                return None
-                
-    except Exception as e:
-        st.error(f"Connection Error: {str(e)}")
+        # Make sure it's a POST request to the correct endpoint
+        response = requests.post(
+            endpoint,
+            json=payload,
+            timeout=180  # Increase timeout to 3 minutes
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data[0]
+            return data if isinstance(data, dict) else None
+        
+        st.error(f"API Error {response.status_code}")
         return None
         
+    except requests.exceptions.Timeout:
+        st.warning("Request timed out. Switching to async method...")
+        return await_async_fetch(profile_url, api_key)
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
+        return None
+
+
 def try_async_fallback(profile_url: str, api_key: str, actor_id: str) -> dict:
     """
     Try asynchronous method as fallback
@@ -100,6 +86,30 @@ def try_async_fallback(profile_url: str, api_key: str, actor_id: str) -> dict:
         
     except Exception:
         return None
+
+if 'apify_run_id' not in st.session_state:
+    st.session_state.apify_run_id = None
+
+def start_async_apify_run(profile_url: str, api_key: str) -> str:
+    """
+    Start an async Apify run and return the run ID.
+    """
+    endpoint = f"https://api.apify.com/v2/acts/apimaestro~linkedin-profile-detail/runs?token={api_key}"
+    
+    username = profile_url.split("/in/")[-1].strip("/") if "/in/" in profile_url else profile_url
+    
+    payload = {
+        "username": username,
+        "includeEmail": False
+    }
+    
+    response = requests.post(endpoint, json=payload)
+    
+    if response.status_code == 201:
+        run_data = response.json()
+        return run_data["data"]["id"]
+    
+    return None
 
 def poll_for_run_result(api_key: str, run_id: str) -> dict:
     """
@@ -196,6 +206,51 @@ def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
             
     except Exception:
         return dynamic_fallback_analysis(profile_data)
+
+def poll_apify_results(run_id: str, api_key: str) -> dict:
+    """
+    Poll for completed Apify run results.
+    """
+    status_endpoint = f"https://api.apify.com/v2/actor-runs/{run_id}?token={api_key}"
+    
+    for _ in range(30):  # Try for 5 minutes
+        time.sleep(10)  # Check every 10 seconds
+        
+        status_response = requests.get(status_endpoint)
+        
+        if status_response.status_code == 200:
+            status_data = status_response.json()
+            status = status_data["data"]["status"]
+            
+            if status == "SUCCEEDED":
+                # Get dataset items
+                dataset_id = status_data["data"]["defaultDatasetId"]
+                dataset_endpoint = f"https://api.apify.com/v2/datasets/{dataset_id}/items?token={api_key}"
+                dataset_response = requests.get(dataset_endpoint)
+                
+                if dataset_response.status_code == 200:
+                    items = dataset_response.json()
+                    if items and len(items) > 0:
+                        return items[0]
+            
+            elif status in ["FAILED", "TIMED-OUT", "ABORTED"]:
+                st.error(f"Apify run failed with status: {status}")
+                return None
+    
+    st.error("Polling timeout - run taking too long")
+    return None
+    
+def await_async_fetch(profile_url: str, api_key: str) -> dict:
+    """
+    Complete async fetch workflow.
+    """
+    run_id = start_async_apify_run(profile_url, api_key)
+    
+    if run_id:
+        st.session_state.apify_run_id = run_id
+        return poll_apify_results(run_id, api_key)
+    
+    return None
 
 def dynamic_fallback_analysis(profile_data: dict) -> str:
     """
@@ -646,33 +701,21 @@ if analyze_clicked and linkedin_url:
     else:
         st.session_state.processing_status = "FETCHING"
         
-        # Fetch data from Apify
-        with st.spinner("CONNECTING TO APIFY..."):
-            profile_data = fetch_apify_data(linkedin_url, apify_api_key)
+        # Try sync first, fall back to async
+        profile_data = fetch_apify_data(linkedin_url, apify_api_key)
+        
+        if profile_data:
+            st.session_state.profile_data = profile_data
+            st.session_state.processing_status = "ANALYZING"
             
-            if profile_data:
-                st.session_state.profile_data = profile_data
-                st.session_state.data_structure = {
-                    k: type(v).__name__ 
-                    for k, v in profile_data.items() 
-                    if isinstance(v, (str, int, float, list, dict, bool))
-                }
-                st.session_state.processing_status = "ANALYZING"
-                
-                # Generate research brief
-                with st.spinner("ANALYZING WITH LLM..."):
-                    research_brief = generate_research_brief(
-                        profile_data, 
-                        groq_api_key, 
-                        analysis_mode
-                    )
-                    st.session_state.research_brief = research_brief
-                    st.session_state.processing_status = "COMPLETE"
-                    st.success("ANALYSIS COMPLETE • DATA STRUCTURE ADAPTED")
-            else:
-                st.session_state.processing_status = "ERROR"
-                st.error("NO DATA RECEIVED • CHECK URL AND API KEY")
-
+            with st.spinner("GENERATING RESEARCH BRIEF..."):
+                research_brief = generate_research_brief(profile_data, groq_api_key, analysis_mode)
+                st.session_state.research_brief = research_brief
+                st.session_state.processing_status = "COMPLETE"
+                st.success("ANALYSIS COMPLETE")
+        else:
+            st.session_state.processing_status = "ERROR"
+            st.error("FAILED TO FETCH DATA - TRYING ASYNC METHOD OR CHECK ACTOR STATUS")
 # --- Display Results ---
 if st.session_state.profile_data and st.session_state.research_brief:
     st.markdown("---")
