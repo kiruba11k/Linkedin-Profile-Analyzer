@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 import time
 
-# ========== API FUNCTIONS (DEFINED FIRST) ==========
+# ========== API FUNCTIONS ==========
 
 def extract_username_from_url(profile_url: str) -> str:
     """Extract username from LinkedIn URL."""
@@ -14,8 +14,8 @@ def extract_username_from_url(profile_url: str) -> str:
 
 def start_apify_run(username: str, api_key: str) -> dict:
     """
-    Step 1: Start the Apify actor run asynchronously.
-    Returns the run data containing runId and defaultDatasetId.
+    Start the Apify actor run asynchronously.
+    HTTP 201 status means SUCCESS - run created.
     """
     try:
         endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-profile-detail/runs"
@@ -24,22 +24,17 @@ def start_apify_run(username: str, api_key: str) -> dict:
             "Content-Type": "application/json"
         }
         
-        payload = {
-            "username": username,
-            "includeEmail": False
-        }
+        payload = {"username": username, "includeEmail": False}
         
         response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
         
-        # 201 is SUCCESS for async operations
         if response.status_code == 201:
             run_data = response.json()
-            if "data" in run_data:
-                return {
-                    "run_id": run_data["data"]["id"],
-                    "dataset_id": run_data["data"]["defaultDatasetId"],
-                    "status": "STARTED"
-                }
+            return {
+                "run_id": run_data["data"]["id"],
+                "dataset_id": run_data["data"]["defaultDatasetId"],
+                "status": "RUNNING"
+            }
         else:
             st.error(f"Failed to start actor. Status: {response.status_code}")
             return None
@@ -48,81 +43,75 @@ def start_apify_run(username: str, api_key: str) -> dict:
         st.error(f"Error starting Apify run: {str(e)}")
         return None
 
-def check_run_status(run_id: str, api_key: str) -> dict:
-    """Check the status of an Apify run."""
-    try:
-        endpoint = f"https://api.apify.com/v2/actor-runs/{run_id}"
-        headers = {"Authorization": f"Bearer {api_key}"}
-        
-        response = requests.get(endpoint, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            return response.json()["data"]
-        return None
-        
-    except Exception:
-        return None
-
-def fetch_apify_results(dataset_id: str, api_key: str) -> dict:
-    """Fetch results from Apify dataset."""
-    try:
-        endpoint = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
-        headers = {"Authorization": f"Bearer {api_key}"}
-        
-        response = requests.get(endpoint, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            items = response.json()
-            if isinstance(items, list) and len(items) > 0:
-                return items[0]
-            elif isinstance(items, dict):
-                return items
-        return None
-        
-    except Exception:
-        return None
-
-def poll_apify_run(run_id: str, dataset_id: str, api_key: str) -> dict:
+def poll_apify_run_with_status(run_id: str, dataset_id: str, api_key: str) -> dict:
     """
-    Poll the Apify run until completion and return results.
+    Poll the Apify run with proper status updates.
+    Returns profile data when successful.
     """
-    max_attempts = 36  # 6 minutes max (10 seconds per check)
+    max_attempts = 60
+    headers = {"Authorization": f"Bearer {api_key}"}
+    
+    status_placeholder = st.empty()
+    progress_bar = st.progress(0)
     
     for attempt in range(max_attempts):
-        # Update progress
-        progress = min(100, int((attempt + 1) / max_attempts * 100))
-        st.session_state.processing_progress = progress
+        progress = min(100, int((attempt + 1) / max_attempts * 80))
+        progress_bar.progress(progress)
         
-        # Check run status
-        status_data = check_run_status(run_id, api_key)
+        status_placeholder.info(f"Scraping LinkedIn profile. Attempt {attempt + 1} of {max_attempts}")
         
-        if not status_data:
-            time.sleep(10)
-            continue
+        try:
+            status_endpoint = f"https://api.apify.com/v2/actor-runs/{run_id}"
+            status_response = requests.get(status_endpoint, headers=headers, timeout=15)
             
-        status = status_data.get("status", "")
-        
-        if status == "SUCCEEDED":
-            # Fetch the results
-            results = fetch_apify_results(dataset_id, api_key)
-            if results:
-                return results
+            if status_response.status_code == 200:
+                status_data = status_response.json()["data"]
+                current_status = status_data.get("status", "UNKNOWN")
                 
-        elif status in ["FAILED", "TIMED-OUT", "ABORTED"]:
-            st.error(f"Actor run failed with status: {status}")
-            return None
-            
-        # Still running, wait and try again
-        time.sleep(10)
+                status_placeholder.info(f"Apify status: {current_status}")
+                
+                if current_status == "SUCCEEDED":
+                    status_placeholder.success("LinkedIn data fetched successfully")
+                    progress_bar.progress(95)
+                    
+                    dataset_endpoint = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+                    dataset_response = requests.get(dataset_endpoint, headers=headers, timeout=30)
+                    
+                    if dataset_response.status_code == 200:
+                        items = dataset_response.json()
+                        progress_bar.progress(100)
+                        if isinstance(items, list) and len(items) > 0:
+                            return items[0]
+                        elif isinstance(items, dict):
+                            return items
+                    else:
+                        st.error(f"Failed to fetch dataset: {dataset_response.status_code}")
+                        return None
+                        
+                elif current_status in ["FAILED", "TIMED-OUT", "ABORTED"]:
+                    status_placeholder.error(f"Apify run failed: {current_status}")
+                    return None
+                    
+                elif current_status == "RUNNING":
+                    time.sleep(10)
+                    continue
+                    
+            else:
+                status_placeholder.warning(f"Failed to check status: {status_response.status_code}")
+                time.sleep(10)
+                
+        except Exception as e:
+            status_placeholder.warning(f"Error checking status: {str(e)}")
+            time.sleep(10)
     
-    st.error("Polling timeout - actor taking too long")
+    status_placeholder.error("Polling timeout - Apify taking too long")
     return None
 
 def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
     """Generate research brief using Groq LLM."""
     try:
         prompt = f"""
-        Analyze this LinkedIn profile data and create a professional research brief for sales prospecting.
+        Analyze this LinkedIn profile data and create a professional research brief.
         
         PROFILE DATA:
         {json.dumps(profile_data, indent=2)}
@@ -130,14 +119,13 @@ def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
         ANALYSIS MODE: {mode}
         
         Create a structured brief with these sections:
-        1. PROFILE SUMMARY (key facts only)
-        2. CAREER TRAJECTORY & CURRENT ROLE
-        3. TECHNICAL SKILLS & COMPETENCIES
-        4. BUSINESS CONTEXT & INFERRED NEEDS
+        1. PROFILE SUMMARY
+        2. CAREER TRAJECTORY
+        3. TECHNICAL COMPETENCIES
+        4. BUSINESS CONTEXT
         5. PERSONALIZATION OPPORTUNITIES
         
-        Keep it factual, concise, and focused on business insights.
-        Avoid all flattery words and subjective praise.
+        Keep it factual and business-focused.
         """
         
         headers = {
@@ -150,7 +138,7 @@ def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a data-driven research analyst. Provide factual analysis without flattery."
+                    "content": "You are a data-driven research analyst."
                 },
                 {"role": "user", "content": prompt}
             ],
@@ -168,29 +156,26 @@ def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
         else:
-            return "Error generating research brief. Please check your Groq API key."
+            return "Error generating research brief."
             
-    except Exception as e:
-        return f"LLM connection error: {str(e)}"
+    except Exception:
+        return "LLM connection error."
 
 def generate_first_level_message(profile_data: dict, api_key: str, style: str) -> str:
     """Generate first-level LinkedIn connection message."""
     try:
         prompt = f"""
-        Create a first-level LinkedIn connection request message based on this profile.
+        Create a first-level LinkedIn connection request message.
         
         PROFILE DATA:
         {json.dumps(profile_data, indent=2)}
         
         REQUIREMENTS:
-        1. Message must be UNDER 250 characters
-        2. Focus on specific work, projects, or technologies from the profile
+        1. UNDER 250 characters
+        2. Focus on specific work from the profile
         3. Tone: {style}
-        4. ABSOLUTELY FORBIDDEN: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
-        5. NO FLATTERY - only factual observations
-        6. Reference something specific from the profile
-        
-        Example structure: "Saw your work on [specific thing]. [Factual observation]. Would connect to discuss [related topic]."
+        4. NO FLATTERY - factual observations only
+        5. Reference something specific from the profile
         
         Generate only the message content.
         """
@@ -205,7 +190,7 @@ def generate_first_level_message(profile_data: dict, api_key: str, style: str) -
             "messages": [
                 {
                     "role": "system",
-                    "content": "Create direct, professional LinkedIn messages without forbidden words. Reference specific profile content."
+                    "content": "Create professional LinkedIn messages without flattery."
                 },
                 {"role": "user", "content": prompt}
             ],
@@ -230,7 +215,7 @@ def generate_first_level_message(profile_data: dict, api_key: str, style: str) -
             return "Would connect based on your technical background."
             
     except Exception:
-        return "Saw your profile. Would connect to discuss professional work."
+        return "Would connect to discuss professional work."
 
 # ========== STREAMLIT APPLICATION ==========
 
@@ -328,28 +313,6 @@ retro_css = """
         transform: translateY(-2px);
     }
     
-    .progress-container {
-        background: #001100;
-        border: 1px solid #00ff00;
-        padding: 10px;
-        margin: 10px 0;
-    }
-    
-    .progress-bar {
-        height: 20px;
-        background: #003300;
-        border: 1px solid #008800;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .progress-fill {
-        height: 100%;
-        background: #00ff00;
-        width: 0%;
-        transition: width 0.5s;
-    }
-    
     .message-history-item {
         background: #001100;
         border: 1px solid #008800;
@@ -377,12 +340,10 @@ retro_css = """
         border-radius: 50%;
         margin-right: 8px;
         background: #ff0000;
-        box-shadow: 0 0 10px #ff0000;
     }
     
     .status-led.active {
         background: #00ff00;
-        box-shadow: 0 0 10px #00ff00;
         animation: pulse 2s infinite;
     }
     
@@ -407,10 +368,6 @@ if 'current_message_index' not in st.session_state:
     st.session_state.current_message_index = -1
 if 'processing_status' not in st.session_state:
     st.session_state.processing_status = "READY"
-if 'processing_progress' not in st.session_state:
-    st.session_state.processing_progress = 0
-if 'apify_run_info' not in st.session_state:
-    st.session_state.apify_run_info = None
 
 # --- Header ---
 st.markdown("<h1 class='glitch-header'>PROSPECT RESEARCH ASSISTANT</h1>", unsafe_allow_html=True)
@@ -440,7 +397,6 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Status Display
     st.markdown("### SYSTEM STATUS")
     status_text = st.session_state.processing_status
     status_class = "active" if status_text == "READY" else ""
@@ -449,7 +405,6 @@ with st.sidebar:
     <div class="terminal-box">
         <span class="status-led {status_class}"></span>
         <strong>STATUS: {status_text}</strong><br>
-        Progress: {st.session_state.processing_progress}%<br>
         Messages: {len(st.session_state.generated_messages)}<br>
         Last Update: {datetime.now().strftime('%H:%M:%S')}
     </div>
@@ -477,29 +432,17 @@ if analyze_clicked and linkedin_url:
     if not apify_api_key or not groq_api_key:
         st.error("ERROR: BOTH API KEYS ARE REQUIRED")
     else:
-        # Step 1: Start Apify run
-        st.session_state.processing_status = "STARTING APIFY RUN"
-        st.session_state.processing_progress = 10
+        st.session_state.processing_status = "STARTING"
         
         username = extract_username_from_url(linkedin_url)
         run_info = start_apify_run(username, apify_api_key)
         
         if run_info:
-            st.session_state.apify_run_info = run_info
-            st.session_state.processing_status = "POLLING APIFY RESULTS"
-            st.session_state.processing_progress = 30
+            st.info(f"Apify Run ID: {run_info['run_id'][:20]}...")
+            st.info(f"Dataset ID: {run_info['dataset_id'][:20]}...")
+            st.info("This may take 30-60 seconds. Please wait...")
             
-            # Create progress container
-            progress_container = st.container()
-            with progress_container:
-                st.markdown("### PROCESSING STATUS")
-                st.markdown("<div class='progress-container'>", unsafe_allow_html=True)
-                st.markdown(f"<div class='progress-bar'><div class='progress-fill' style='width: {st.session_state.processing_progress}%'></div></div>", unsafe_allow_html=True)
-                st.markdown(f"Fetching data for: {username}")
-                st.markdown("</div>", unsafe_allow_html=True)
-            
-            # Step 2: Poll for results
-            profile_data = poll_apify_run(
+            profile_data = poll_apify_run_with_status(
                 run_info["run_id"],
                 run_info["dataset_id"],
                 apify_api_key
@@ -507,40 +450,27 @@ if analyze_clicked and linkedin_url:
             
             if profile_data:
                 st.session_state.profile_data = profile_data
-                st.session_state.processing_status = "GENERATING RESEARCH BRIEF"
-                st.session_state.processing_progress = 70
+                st.session_state.processing_status = "DATA RECEIVED"
                 
-                # Update progress
-                with progress_container:
-                    st.markdown(f"<div class='progress-bar'><div class='progress-fill' style='width: {st.session_state.processing_progress}%'></div></div>", unsafe_allow_html=True)
-                    st.markdown("Data received. Generating analysis...")
-                
-                # Step 3: Generate research brief
-                research_brief = generate_research_brief(
-                    profile_data,
-                    groq_api_key,
-                    analysis_mode
-                )
-                
-                st.session_state.research_brief = research_brief
-                st.session_state.processing_status = "COMPLETE"
-                st.session_state.processing_progress = 100
-                
-                # Clear progress container and show success
-                progress_container.empty()
-                st.success("ANALYSIS COMPLETE - PROFILE DATA READY")
+                with st.spinner("Generating research brief with AI..."):
+                    research_brief = generate_research_brief(
+                        profile_data,
+                        groq_api_key,
+                        analysis_mode
+                    )
+                    st.session_state.research_brief = research_brief
+                    st.session_state.processing_status = "COMPLETE"
+                    st.success("Analysis complete")
             else:
                 st.session_state.processing_status = "ERROR"
-                st.error("FAILED TO RETRIEVE PROFILE DATA")
+                st.error("Failed to get data from Apify")
         else:
             st.session_state.processing_status = "ERROR"
-            st.error("FAILED TO START APIFY RUN")
 
 # --- Display Results ---
 if st.session_state.profile_data and st.session_state.research_brief:
     st.markdown("---")
     
-    # Create Tabs
     tab1, tab2, tab3 = st.tabs(["RESEARCH BRIEF", "MESSAGES", "RAW DATA"])
     
     with tab1:
@@ -551,7 +481,6 @@ if st.session_state.profile_data and st.session_state.research_brief:
         st.markdown("</div>", unsafe_allow_html=True)
     
     with tab2:
-        # Message Generation Controls
         col_msg1, col_msg2 = st.columns([3, 1])
         
         with col_msg2:
@@ -573,13 +502,13 @@ if st.session_state.profile_data and st.session_state.research_brief:
                 col_nav1, col_nav2 = st.columns(2)
                 
                 with col_nav1:
-                    if st.button("◄ PREVIOUS", use_container_width=True):
+                    if st.button("PREVIOUS", use_container_width=True):
                         if st.session_state.current_message_index > 0:
                             st.session_state.current_message_index -= 1
                             st.rerun()
                 
                 with col_nav2:
-                    if st.button("NEXT ►", use_container_width=True):
+                    if st.button("NEXT", use_container_width=True):
                         if st.session_state.current_message_index < len(st.session_state.generated_messages) - 1:
                             st.session_state.current_message_index += 1
                             st.rerun()
@@ -592,15 +521,13 @@ if st.session_state.profile_data and st.session_state.research_brief:
                 
                 st.markdown("<div class='terminal-box'>", unsafe_allow_html=True)
                 st.markdown(f"**MESSAGE {st.session_state.current_message_index + 1} OF {len(st.session_state.generated_messages)}**")
-                st.markdown(f"*{len(current_msg)} characters*")
+                st.markdown(f"LENGTH: {len(current_msg)} characters")
                 st.markdown("---")
                 st.markdown(current_msg)
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                # Copy button
                 st.code(current_msg, language=None)
                 
-                # Message History
                 if len(st.session_state.generated_messages) > 1:
                     st.markdown("### MESSAGE HISTORY")
                     for idx, msg in enumerate(st.session_state.generated_messages):
@@ -613,12 +540,12 @@ if st.session_state.profile_data and st.session_state.research_brief:
                         </div>
                         """, unsafe_allow_html=True)
             else:
-                st.info("CLICK 'GENERATE NEW MESSAGE' TO CREATE YOUR FIRST MESSAGE")
+                st.info("Click GENERATE NEW MESSAGE to create your first message")
     
     with tab3:
         st.markdown("<div class='terminal-box'>", unsafe_allow_html=True)
         st.markdown("### RAW PROFILE DATA")
-        with st.expander("VIEW COMPLETE JSON DATA"):
+        with st.expander("VIEW JSON DATA"):
             st.json(st.session_state.profile_data)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -626,18 +553,15 @@ if st.session_state.profile_data and st.session_state.research_brief:
 st.markdown("---")
 col_f1, col_f2, col_f3 = st.columns(3)
 with col_f1:
-    st.markdown("**SYSTEM**: Prospect Research v3.0")
+    st.markdown("**SYSTEM**: Prospect Research v4.0")
 with col_f2:
     st.markdown(f"**TIME**: {datetime.now().strftime('%H:%M:%S')}")
 with col_f3:
     if st.session_state.profile_data:
-        # Try to get name from different possible fields
         name = "Profile Loaded"
         if isinstance(st.session_state.profile_data, dict):
             if 'fullname' in st.session_state.profile_data:
                 name = st.session_state.profile_data['fullname']
-            elif 'name' in st.session_state.profile_data:
-                name = st.session_state.profile_data['name']
         st.markdown(f"**CURRENT**: {name[:20]}")
     else:
         st.markdown("**CURRENT**: No Profile")
@@ -645,15 +569,5 @@ with col_f3:
 # --- Deployment Instructions ---
 with st.expander("DEPLOYMENT INFORMATION"):
     st.markdown("""
-
+  
     """)
-
-# --- Error Display ---
-if st.session_state.processing_status == "ERROR":
-    st.markdown("<div class='terminal-box' style='border-color:#ff0000;'>", unsafe_allow_html=True)
-    st.markdown("**SYSTEM ERROR DETECTED**")
-    st.markdown("1. Check API keys are valid")
-    st.markdown("2. Ensure LinkedIn URL is correct")
-    st.markdown("3. Verify Apify account has credits")
-    st.markdown("4. Try a different LinkedIn profile")
-    st.markdown("</div>", unsafe_allow_html=True)
