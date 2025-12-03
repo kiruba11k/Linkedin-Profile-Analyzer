@@ -161,25 +161,69 @@ def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
     except Exception:
         return "LLM connection error."
 
-def generate_first_level_message(profile_data: dict, api_key: str, style: str) -> str:
-    """Generate first-level LinkedIn connection message."""
+def generate_first_level_message(profile_data: dict, api_key: str, sender_name: str = "Joseph") -> str:
+    """
+    Generate LinkedIn messages by teaching the LLM your exact message patterns dynamically.
+    """
+    # Convert profile data to a compact string for the prompt
+    profile_summary = json.dumps(profile_data, indent=2)[:1000]  # Limit size
+    
+    prompt = f"""
+    Create a professional LinkedIn connection request message.
+    
+    ANALYZE THIS PROFILE DATA:
+    {profile_summary}
+    
+    STUDY THESE EXACT MESSAGE PATTERNS (use similar structure but adapt content):
+    
+    "Hi David,
+    Your FP&A leadership at Planet—especially across Adaptive Planning and comp modeling—shows rare execution depth across both finance and tech ops.
+    I focus on automating financial workflows to improve accuracy and forecasting agility.
+    Would be glad to connect.
+    Best, Joseph"
+    
+    "Hi Gabriel,
+    Your move to Planet Home Lending builds on deep experience in origination, recruiting, and growth across the Southeast.
+    I focus on automating lending workflows to improve turnaround and reduce manual bottlenecks.
+    Would be glad to connect.
+    Best, Joseph"
+    
+    "Hi James,
+    Your work leading renovation lending at Planet—built on decades across 203(k), HomeStyle, and builder programs—gives you sharp insight into delivery gaps.
+    I focus on automating loan workflows to reduce friction and improve control.
+    Best, Joseph"
+    
+    "Hi Bill,
+    Your leadership at Planet and track record of aligning IT and business goals to create cost-efficient, scalable organizations is inspiring.
+    I work on automating workflows that increase speed-to-decision and tech ROI across mortgage platforms.
+    Best, Joseph"
+    
+    "Hi John,
+    I noticed your leadership in mortgage lending at Planet Home Lending.
+    I've been exploring how technology is reshaping lending workflows and enhancing efficiency.
+    Coming from a similar ecosystem, I'd like to connect.
+    Best, Joseph"
+    
+    PATTERN ANALYSIS - USE THIS STRUCTURE:
+    1. Greeting: "Hi [First Name],"
+    2. Observation: Extract something specific from their profile (role/company/experience)
+    3. Connection: "I focus on automating [relevant domain] workflows to [achieve benefit]"
+    4. Closing: "Would be glad to connect." or similar
+    5. Signature: "Best, {sender_name}"
+    
+    KEY INSTRUCTIONS:
+    - UNDER 250 characters total
+    - Extract first name dynamically from profile data
+    - Reference actual role/company/expertise from their profile
+    - Use automation/workflow improvement language
+    - NEVER use forbidden words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
+    - Match the professional tone of the examples
+    - Focus on their actual profile content, not generic statements
+    
+    Generate only the message content.
+    """
+    
     try:
-        prompt = f"""
-        Create a first-level LinkedIn connection request message.
-        
-        PROFILE DATA:
-        {json.dumps(profile_data, indent=2)}
-        
-        REQUIREMENTS:
-        1. UNDER 250 characters
-        2. Focus on specific work from the profile
-        3. Tone: {style}
-        4. NO FLATTERY - factual observations only
-        5. Reference something specific from the profile
-        
-        Generate only the message content.
-        """
-        
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -189,13 +233,13 @@ def generate_first_level_message(profile_data: dict, api_key: str, style: str) -
             "model": "llama3-70b-8192",
             "messages": [
                 {
-                    "role": "system",
-                    "content": "Create professional LinkedIn messages without flattery."
+                    "role": "system", 
+                    "content": f"You create LinkedIn messages that match the exact patterns provided. Extract names and details dynamically from whatever profile data you receive. Always reference specific profile content. Never use forbidden words. Your signature is: Best, {sender_name}"
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.7,
-            "max_tokens": 150
+            "temperature": 0.8,  # Higher for more creative adaptation
+            "max_tokens": 300
         }
         
         response = requests.post(
@@ -207,16 +251,88 @@ def generate_first_level_message(profile_data: dict, api_key: str, style: str) -
         
         if response.status_code == 200:
             message = response.json()["choices"][0]["message"]["content"].strip()
-            message = message.replace('"', '').replace('\n', ' ')
+            
+            # Minimal cleaning - preserve the pattern
+            message = message.replace('"', '').replace("''", "'")
+            
+            # Ensure proper signature
+            if f"Best, {sender_name}" not in message:
+                message = f"{message.rstrip()}\nBest, {sender_name}"
+            
+            # Length enforcement
             if len(message) > 250:
-                message = message[:247] + '...'
+                # Try to preserve structure while shortening
+                lines = message.split('\n')
+                if len(lines) >= 3:
+                    # Keep greeting, first substantive line, and closing
+                    keep_lines = [lines[0]]
+                    for line in lines[1:-1]:
+                        if line.strip() and not line.startswith("Best,"):
+                            keep_lines.append(line)
+                            if len('\n'.join(keep_lines)) > 150:
+                                break
+                    keep_lines.append(lines[-1])
+                    message = '\n'.join(keep_lines)
+                
+                if len(message) > 250:
+                    message = message[:247] + '...'
+            
             return message
         else:
-            return "Would connect based on your technical background."
+            return dynamic_fallback_message(profile_data, sender_name)
             
     except Exception:
-        return "Would connect to discuss professional work."
+        return dynamic_fallback_message(profile_data, sender_name)
 
+def dynamic_fallback_message(profile_data: dict, sender_name: str) -> str:
+    """
+    Dynamic fallback that extracts whatever info exists.
+    """
+    # Try to find a name
+    name_candidates = []
+    if isinstance(profile_data, dict):
+        if 'basic_info' in profile_data and isinstance(profile_data['basic_info'], dict):
+            name_candidates.extend([
+                profile_data['basic_info'].get('first_name'),
+                profile_data['basic_info'].get('fullname'),
+                profile_data['basic_info'].get('name')
+            ])
+        name_candidates.extend([
+            profile_data.get('first_name'),
+            profile_data.get('name'),
+            profile_data.get('fullname')
+        ])
+    
+    first_name = "there"
+    for candidate in name_candidates:
+        if candidate and isinstance(candidate, str):
+            # Extract first name
+            name_parts = candidate.split()
+            if name_parts:
+                first_name = name_parts[0]
+                break
+    
+    # Try to find role/company
+    role_info = ""
+    if isinstance(profile_data, dict):
+        if 'experience' in profile_data and isinstance(profile_data['experience'], list):
+            for exp in profile_data['experience']:
+                if isinstance(exp, dict):
+                    title = exp.get('title', '')
+                    company = exp.get('company', '')
+                    if title or company:
+                        role_info = f"{title} at {company}" if title and company else title or company
+                        break
+        
+        if not role_info and 'basic_info' in profile_data:
+            headline = profile_data['basic_info'].get('headline', '')
+            if headline:
+                role_info = headline.split('|')[0].strip() if '|' in headline else headline
+    
+    if role_info:
+        return f"Hi {first_name},\nYour {role_info} shows strong expertise.\nI focus on automating workflows to improve efficiency.\nWould be glad to connect.\nBest, {sender_name}"
+    else:
+        return f"Hi {first_name},\nYour professional background shows expertise.\nI focus on workflow automation to enhance operations.\nWould be glad to connect.\nBest, {sender_name}"
 # ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
@@ -382,6 +498,18 @@ with st.sidebar:
     groq_api_key = st.secrets.get("GROQ")
     
     st.markdown("---")
+    sender_name = st.text_input(
+    "YOUR NAME FOR MESSAGES",
+    value="Joseph",
+    help="This name will sign the messages"
+)
+
+# Update the message generation call:
+    new_message = generate_first_level_message(
+    st.session_state.profile_data,
+    groq_api_key,
+    sender_name  # Pass the name
+)
     
     analysis_mode = st.selectbox(
         "ANALYSIS MODE",
