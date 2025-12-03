@@ -7,70 +7,58 @@ import time
 # --- API Functions (DEFINED FIRST) ---
 def fetch_apify_data(profile_url: str, api_key: str) -> dict:
     """
-    Fetch LinkedIn profile data dynamically using Apify API
-    Returns whatever structure the actor provides
+    Fetch LinkedIn profile data using the correct endpoint for
+    apimaestro~linkedin-profile-detail actor.
     """
     try:
-        # Using the apimaestro~linkedin-profile-detail actor
-        actor_id = "apimaestro~linkedin-profile-detail"
-        endpoint = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items"
+        # Use the synchronous endpoint that returns dataset items immediately
+        endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-profile-detail/run-sync-get-dataset-items"
+        
+        # Extract username from LinkedIn URL (the part after '/in/')
+        # Example: https://linkedin.com/in/john-doe -> username = "john-doe"
+        if "/in/" in profile_url:
+            username = profile_url.split("/in/")[-1].strip("/")
+        else:
+            username = profile_url  # Assume it's already a username
         
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         
-        # Dynamic payload - adapts based on URL
+        # CORRECT INPUT FORMAT - uses "username" parameter[citation:3][citation:8]
         payload = {
-            "profileUrls": [profile_url],
-            "timeout": 60000,
-            "maxProfiles": 1
+            "username": username,
+            "includeEmail": False  # Set to True if you want email scraping
         }
         
-        # Try different payload structures if needed
-        alt_payloads = [
-            payload,
-            {"url": profile_url, "maxResults": 1},
-            {"input": {"url": profile_url}}
-        ]
-        
-        for attempt, current_payload in enumerate(alt_payloads):
-            try:
-                response = requests.post(
-                    endpoint,
-                    headers=headers,
-                    json=current_payload,
-                    timeout=120
-                )
+        with st.spinner(f"Fetching data for {username}..."):
+            response = requests.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    # Handle various response formats dynamically
-                    if isinstance(data, list) and len(data) > 0:
-                        return data[0] if isinstance(data[0], dict) else data
-                    elif isinstance(data, dict):
-                        if 'data' in data:
-                            return data['data']
-                        elif 'items' in data:
-                            return data['items'][0] if isinstance(data['items'], list) else data['items']
-                        elif 'result' in data:
-                            return data['result']
-                        return data
+                # Handle response format - should be a list of items
+                if isinstance(data, list) and len(data) > 0:
+                    return data[0]
+                elif isinstance(data, dict):
                     return data
+                else:
+                    st.warning(f"Unexpected response format: {type(data)}")
+                    return None
+            else:
+                st.error(f"API Error {response.status_code}: {response.text[:200]}")
+                return None
                 
-            except Exception as e:
-                if attempt == len(alt_payloads) - 1:
-                    raise e
-                continue
-        
-        # If we get here, try async method
-        return try_async_fallback(profile_url, api_key, actor_id)
-        
     except Exception as e:
-        st.error(f"API Error: {str(e)}")
+        st.error(f"Connection Error: {str(e)}")
         return None
-
+        
 def try_async_fallback(profile_url: str, api_key: str, actor_id: str) -> dict:
     """
     Try asynchronous method as fallback
