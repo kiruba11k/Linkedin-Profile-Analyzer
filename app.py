@@ -107,26 +107,27 @@ def poll_apify_run_with_status(run_id: str, dataset_id: str, api_key: str) -> di
     status_placeholder.error("Polling timeout - Apify taking too long")
     return None
 
-def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
-    """Generate research brief using Groq LLM."""
+def generate_research_brief(profile_data: dict, api_key: str) -> str:
+    """
+    Generate research brief with improved reliability.
+    """
     try:
-        prompt = f"""
-        Analyze this LinkedIn profile data and create a professional research brief.
+        profile_summary = json.dumps(profile_data, indent=2)[:2000]
+        
+        prompt = f'''
+        Create a concise research brief for sales prospecting.
         
         PROFILE DATA:
-        {json.dumps(profile_data, indent=2)}
+        {profile_summary}
         
-        ANALYSIS MODE: {mode}
+        Create a brief with these sections:
+        1. KEY PROFILE INSIGHTS
+        2. CAREER PATTERNS & CURRENT FOCUS
+        3. BUSINESS CONTEXT & POTENTIAL NEEDS
+        4. PERSONALIZATION OPPORTUNITIES
         
-        Create a structured brief with these sections:
-        1. PROFILE SUMMARY
-        2. CAREER TRAJECTORY
-        3. TECHNICAL COMPETENCIES
-        4. BUSINESS CONTEXT
-        5. PERSONALIZATION OPPORTUNITIES
-        
-        Keep it factual and business-focused.
-        """
+        Keep it factual and actionable.
+        '''
         
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -138,90 +139,120 @@ def generate_research_brief(profile_data: dict, api_key: str, mode: str) -> str:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a data-driven research analyst."
+                    "content": "You are a research analyst creating factual briefs."
                 },
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.3,
-            "max_tokens": 1500
+            "max_tokens": 1200
         }
         
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=45
-        )
-        
-        if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
-        else:
-            return "Error generating research brief."
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
             
-    except Exception:
-        return "LLM connection error."
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                return f"Research brief generation encountered an issue (Status: {response.status_code}). The profile data is loaded and ready for message generation."
+                
+        except requests.exceptions.Timeout:
+            return "Research brief generation is taking longer than expected. Profile data is loaded and ready for message generation."
+        except Exception as e:
+            return f"Research brief service temporarily unavailable. Profile data loaded successfully."
+            
+    except Exception as e:
+        return f"Profile analysis ready. Focus on message generation."
 
-def generate_first_level_message(profile_data: dict, api_key: str, sender_name: str = "Joseph") -> str:
+def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: str, 
+                                user_instructions: str = None, previous_message: str = None) -> str:
     """
-    Generate LinkedIn messages by teaching the LLM your exact message patterns dynamically.
+    LLM analyzes message patterns organically and generates a natural message.
+    Users can provide instructions to refine messages.
     """
-    # Convert profile data to a compact string for the prompt
-    profile_summary = json.dumps(profile_data, indent=2)[:1000]  # Limit size
+    # Prepare profile summary
+    profile_summary = json.dumps(profile_data, indent=2)[:1500]
     
-    prompt = f"""
-    Create a professional LinkedIn connection request message.
-    
-    ANALYZE THIS PROFILE DATA:
-    {profile_summary}
-    
-    STUDY THESE EXACT MESSAGE PATTERNS (use similar structure but adapt content):
-    
+    # Build learning examples from your messages
+    learning_examples = '''
     "Hi David,
-    Your FP&A leadership at Planet—especially across Adaptive Planning and comp modeling—shows rare execution depth across both finance and tech ops.
-    I focus on automating financial workflows to improve accuracy and forecasting agility.
-    Would be glad to connect.
+    Your FP&A leadership at Planet—especially across Adaptive Planning and comp modeling—shows rare execution depth across both finance and tech ops. I focus on automating financial workflows to improve accuracy and forecasting agility. Would be glad to connect.
     Best, Joseph"
-    
+
     "Hi Gabriel,
-    Your move to Planet Home Lending builds on deep experience in origination, recruiting, and growth across the Southeast.
-    I focus on automating lending workflows to improve turnaround and reduce manual bottlenecks.
-    Would be glad to connect.
+    Your move to Planet Home Lending builds on deep experience in origination, recruiting, and growth across the Southeast. I focus on automating lending workflows to improve turnaround and reduce manual bottlenecks. Would be glad to connect.
     Best, Joseph"
-    
+
     "Hi James,
-    Your work leading renovation lending at Planet—built on decades across 203(k), HomeStyle, and builder programs—gives you sharp insight into delivery gaps.
-    I focus on automating loan workflows to reduce friction and improve control.
+    Your work leading renovation lending at Planet—built on decades across 203(k), HomeStyle, and builder programs—gives you sharp insight into delivery gaps. I focus on automating loan workflows to reduce friction and improve control.
     Best, Joseph"
-    
-    "Hi Bill,
-    Your leadership at Planet and track record of aligning IT and business goals to create cost-efficient, scalable organizations is inspiring.
-    I work on automating workflows that increase speed-to-decision and tech ROI across mortgage platforms.
-    Best, Joseph"
-    
+
     "Hi John,
-    I noticed your leadership in mortgage lending at Planet Home Lending.
-    I've been exploring how technology is reshaping lending workflows and enhancing efficiency.
-    Coming from a similar ecosystem, I'd like to connect.
+    I noticed your leadership in mortgage lending at Planet Home Lending. I've been exploring how technology is reshaping lending workflows and enhancing efficiency. Coming from a similar ecosystem, I'd like to connect.
     Best, Joseph"
+
+    "Hi Heather,
+    Adam mentioned your name when we spoke about retention and analytics at Planet. Given your leadership in marketing and data-driven strategies, I'd love to connect and exchange perspectives on how automation is evolving retention strategy.
+    Best, Joseph"
+    '''
     
-    PATTERN ANALYSIS - USE THIS STRUCTURE:
-    1. Greeting: "Hi [First Name],"
-    2. Observation: Extract something specific from their profile (role/company/experience)
-    3. Connection: "I focus on automating [relevant domain] workflows to [achieve benefit]"
-    4. Closing: "Would be glad to connect." or similar
-    5. Signature: "Best, {sender_name}"
-    
-    KEY INSTRUCTIONS:
-    - UNDER 250 characters total
-    - Extract first name dynamically from profile data
-    - Reference actual role/company/expertise from their profile
-    - Use automation/workflow improvement language
-    - NEVER use forbidden words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
-    - Match the professional tone of the examples
-    - Focus on their actual profile content, not generic statements
-    
-    Generate only the message content.
-    """
+    if user_instructions and previous_message:
+        # Refinement mode
+        prompt = f'''
+        REFINE THIS MESSAGE BASED ON USER INSTRUCTIONS:
+        
+        ORIGINAL MESSAGE:
+        {previous_message}
+        
+        USER INSTRUCTIONS:
+        {user_instructions}
+        
+        PROFILE CONTEXT:
+        {profile_summary}
+        
+        MESSAGE PATTERN EXAMPLES:
+        {learning_examples}
+        
+        TASK: Modify the original message following the user's instructions while maintaining:
+        1. Under 275 characters
+        2. Natural three-part structure (about them, about you, connection)
+        3. Professional tone matching the examples
+        4. End with: Best, {sender_name}
+        
+        Generate only the refined message.
+        '''
+    else:
+        # New generation mode
+        prompt = f'''
+        ANALYZE THESE MESSAGE PATTERNS AND CREATE A NEW ONE:
+        
+        STUDY THESE NATURAL MESSAGES (understand their organic flow):
+        {learning_examples}
+        
+        OBSERVED PATTERN (not template):
+        1. Personalized opening about recipient's work/thoughts/recent activity
+        2. What sender does related to that work
+        3. Natural connection request
+        4. Under 275 characters
+        5. Ends with: Best, [Sender Name]
+        
+        NOW CREATE A MESSAGE FOR THIS PROFILE:
+        {profile_summary}
+        
+        YOUR TASK:
+        1. ANALYZE the profile data naturally
+        2. CREATE a message that follows the organic pattern you observed
+        3. DO NOT use templates or fixed structures
+        4. Make it feel personal and specific to this person
+        5. Keep under 275 characters
+        6. Sign it: Best, {sender_name}
+        
+        Generate only the message content.
+        '''
     
     try:
         headers = {
@@ -234,105 +265,58 @@ def generate_first_level_message(profile_data: dict, api_key: str, sender_name: 
             "messages": [
                 {
                     "role": "system", 
-                    "content": f"You create LinkedIn messages that match the exact patterns provided. Extract names and details dynamically from whatever profile data you receive. Always reference specific profile content. Never use forbidden words. Your signature is: Best, {sender_name}"
+                    "content": f'''You are a skilled communicator who understands message patterns organically. 
+                    You don't use templates. You analyze how people naturally write and create messages with similar flow.
+                    You're creative but professional. Your signature is always: Best, {sender_name}'''
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.8,  # Higher for more creative adaptation
-            "max_tokens": 300
+            "temperature": 0.8,
+            "max_tokens": 350
         }
         
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=30
+            timeout=40
         )
         
         if response.status_code == 200:
             message = response.json()["choices"][0]["message"]["content"].strip()
             
-            # Minimal cleaning - preserve the pattern
+            # Clean up but preserve natural flow
             message = message.replace('"', '').replace("''", "'")
             
             # Ensure proper signature
             if f"Best, {sender_name}" not in message:
                 message = f"{message.rstrip()}\nBest, {sender_name}"
             
-            # Length enforcement
-            if len(message) > 250:
-                # Try to preserve structure while shortening
+            # Length check
+            if len(message) > 275:
+                # Try to shorten while preserving meaning
                 lines = message.split('\n')
-                if len(lines) >= 3:
-                    # Keep greeting, first substantive line, and closing
-                    keep_lines = [lines[0]]
+                if len(lines) >= 2:
+                    # Keep the core parts
+                    important_lines = [lines[0]]
                     for line in lines[1:-1]:
-                        if line.strip() and not line.startswith("Best,"):
-                            keep_lines.append(line)
-                            if len('\n'.join(keep_lines)) > 150:
+                        if line.strip() and 'Best,' not in line:
+                            important_lines.append(line)
+                            if len('\n'.join(important_lines)) > 200:
                                 break
-                    keep_lines.append(lines[-1])
-                    message = '\n'.join(keep_lines)
+                    important_lines.append(lines[-1])
+                    message = '\n'.join(important_lines)
                 
-                if len(message) > 250:
-                    message = message[:247] + '...'
+                if len(message) > 275:
+                    message = message[:272] + '...'
             
             return message
         else:
-            return dynamic_fallback_message(profile_data, sender_name)
+            return f"Hi there,\nI came across your profile and wanted to connect.\nI focus on workflow automation in your industry.\nWould be glad to connect.\nBest, {sender_name}"
             
-    except Exception:
-        return dynamic_fallback_message(profile_data, sender_name)
+    except Exception as e:
+        return f"Hi,\nYour professional background caught my attention.\nI work on operational improvements in your field.\nWould be good to connect.\nBest, {sender_name}"
 
-def dynamic_fallback_message(profile_data: dict, sender_name: str) -> str:
-    """
-    Dynamic fallback that extracts whatever info exists.
-    """
-    # Try to find a name
-    name_candidates = []
-    if isinstance(profile_data, dict):
-        if 'basic_info' in profile_data and isinstance(profile_data['basic_info'], dict):
-            name_candidates.extend([
-                profile_data['basic_info'].get('first_name'),
-                profile_data['basic_info'].get('fullname'),
-                profile_data['basic_info'].get('name')
-            ])
-        name_candidates.extend([
-            profile_data.get('first_name'),
-            profile_data.get('name'),
-            profile_data.get('fullname')
-        ])
-    
-    first_name = "there"
-    for candidate in name_candidates:
-        if candidate and isinstance(candidate, str):
-            # Extract first name
-            name_parts = candidate.split()
-            if name_parts:
-                first_name = name_parts[0]
-                break
-    
-    # Try to find role/company
-    role_info = ""
-    if isinstance(profile_data, dict):
-        if 'experience' in profile_data and isinstance(profile_data['experience'], list):
-            for exp in profile_data['experience']:
-                if isinstance(exp, dict):
-                    title = exp.get('title', '')
-                    company = exp.get('company', '')
-                    if title or company:
-                        role_info = f"{title} at {company}" if title and company else title or company
-                        break
-        
-        if not role_info and 'basic_info' in profile_data:
-            headline = profile_data['basic_info'].get('headline', '')
-            if headline:
-                role_info = headline.split('|')[0].strip() if '|' in headline else headline
-    
-    if role_info:
-        return f"Hi {first_name},\nYour {role_info} shows strong expertise.\nI focus on automating workflows to improve efficiency.\nWould be glad to connect.\nBest, {sender_name}"
-    else:
-        return f"Hi {first_name},\nYour professional background shows expertise.\nI focus on workflow automation to enhance operations.\nWould be glad to connect.\nBest, {sender_name}"
 # ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
@@ -484,6 +468,12 @@ if 'current_message_index' not in st.session_state:
     st.session_state.current_message_index = -1
 if 'processing_status' not in st.session_state:
     st.session_state.processing_status = "READY"
+if 'sender_name' not in st.session_state:
+    st.session_state.sender_name = "Joseph"
+if 'message_instructions' not in st.session_state:
+    st.session_state.message_instructions = ""
+if 'regenerate_mode' not in st.session_state:
+    st.session_state.regenerate_mode = False
 
 # --- Header ---
 st.markdown("<h1 class='glitch-header'>PROSPECT RESEARCH ASSISTANT</h1>", unsafe_allow_html=True)
@@ -493,38 +483,36 @@ st.markdown("---")
 with st.sidebar:
     st.markdown("### SYSTEM CONFIGURATION")
     
-    apify_api_key = st.secrets.get("APIFY")
+    # Use secrets for API keys
+    apify_api_key = st.secrets.get("APIFY", "")
+    groq_api_key = st.secrets.get("GROQ", "")
     
-    groq_api_key = st.secrets.get("GROQ")
-    
-    st.markdown("---")
-    sender_name = st.text_input(
-    "YOUR NAME FOR MESSAGES",
-    value="Joseph",
-    help="This name will sign the messages"
-)
-
-# Update the message generation call:
-    new_message = generate_first_level_message(
-    st.session_state.profile_data,
-    groq_api_key,
-    sender_name  # Pass the name
-)
-    
-    analysis_mode = st.selectbox(
-        "ANALYSIS MODE",
-        ["QUICK SCAN", "DETAILED ANALYSIS", "TECHNICAL FOCUS"],
-        index=1
-    )
-    
-    message_style = st.selectbox(
-        "MESSAGE STYLE",
-        ["DIRECT", "PROFESSIONAL", "TECHNICAL"],
-        index=1
-    )
+    # Display API key status
+    if apify_api_key:
+        st.success("Apify API: Configured")
+    else:
+        st.error("Apify API: Missing - add to secrets")
+        
+    if groq_api_key:
+        st.success("Groq API: Configured")
+    else:
+        st.error("Groq API: Missing - add to secrets")
     
     st.markdown("---")
     
+    # Sender name configuration
+    new_sender_name = st.text_input(
+        "YOUR NAME FOR MESSAGES",
+        value=st.session_state.sender_name,
+        help="This name will sign all messages"
+    )
+    
+    if new_sender_name != st.session_state.sender_name:
+        st.session_state.sender_name = new_sender_name
+    
+    st.markdown("---")
+    
+    # System Status
     st.markdown("### SYSTEM STATUS")
     status_text = st.session_state.processing_status
     status_class = "active" if status_text == "READY" else ""
@@ -533,7 +521,8 @@ with st.sidebar:
     <div class="terminal-box">
         <span class="status-led {status_class}"></span>
         <strong>STATUS: {status_text}</strong><br>
-        Messages: {len(st.session_state.generated_messages)}<br>
+        Profiles Loaded: {1 if st.session_state.profile_data else 0}<br>
+        Messages Generated: {len(st.session_state.generated_messages)}<br>
         Last Update: {datetime.now().strftime('%H:%M:%S')}
     </div>
     """, unsafe_allow_html=True)
@@ -558,7 +547,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 # --- Processing Logic ---
 if analyze_clicked and linkedin_url:
     if not apify_api_key or not groq_api_key:
-        st.error("ERROR: BOTH API KEYS ARE REQUIRED")
+        st.error("ERROR: BOTH API KEYS ARE REQUIRED. Check Streamlit secrets.")
     else:
         st.session_state.processing_status = "STARTING"
         
@@ -583,8 +572,7 @@ if analyze_clicked and linkedin_url:
                 with st.spinner("Generating research brief with AI..."):
                     research_brief = generate_research_brief(
                         profile_data,
-                        groq_api_key,
-                        analysis_mode
+                        groq_api_key
                     )
                     st.session_state.research_brief = research_brief
                     st.session_state.processing_status = "COMPLETE"
@@ -609,66 +597,143 @@ if st.session_state.profile_data and st.session_state.research_brief:
         st.markdown("</div>", unsafe_allow_html=True)
     
     with tab2:
-        col_msg1, col_msg2 = st.columns([3, 1])
-        
-        with col_msg2:
-            st.markdown("### MESSAGE CONTROLS")
+        if st.session_state.profile_data:
+            # Sender name display
+            st.markdown("<div class='terminal-box'>", unsafe_allow_html=True)
+            st.markdown(f"**SENDER NAME:** {st.session_state.sender_name}")
+            st.markdown("</div>")
             
-            if st.button("GENERATE NEW MESSAGE", use_container_width=True, key="gen_msg_btn"):
-                new_message = generate_first_level_message(
-                    st.session_state.profile_data,
-                    groq_api_key,
-                    message_style
+            # Message generation and refinement area
+            st.markdown("<div class='terminal-box'>", unsafe_allow_html=True)
+            st.markdown("### MESSAGE GENERATION")
+            
+            if not st.session_state.regenerate_mode:
+                # Normal message generation
+                col_gen1, col_gen2 = st.columns([2, 1])
+                
+                with col_gen1:
+                    if st.button("GENERATE NEW MESSAGE", use_container_width=True):
+                        with st.spinner("Analyzing patterns and creating message..."):
+                            new_message = analyze_and_generate_message(
+                                st.session_state.profile_data,
+                                groq_api_key,
+                                st.session_state.sender_name
+                            )
+                            
+                            if new_message:
+                                st.session_state.generated_messages.append(new_message)
+                                st.session_state.current_message_index = len(st.session_state.generated_messages) - 1
+                                st.session_state.regenerate_mode = False
+                                st.rerun()
+                
+                with col_gen2:
+                    if st.button("REFINE/CUSTOMIZE", use_container_width=True):
+                        if len(st.session_state.generated_messages) > 0:
+                            st.session_state.regenerate_mode = True
+                            st.session_state.message_instructions = ""
+                            st.rerun()
+            else:
+                # Regeneration mode with instructions
+                st.markdown("#### PROVIDE INSTRUCTIONS FOR IMPROVEMENT")
+                st.markdown("*Example: 'Make it more technical', 'Shorter', 'Focus on AI projects', etc.*")
+                
+                user_instructions = st.text_area(
+                    "Your instructions:",
+                    value=st.session_state.message_instructions,
+                    height=100,
+                    key="instructions_input",
+                    label_visibility="collapsed"
                 )
-                if new_message:
-                    st.session_state.generated_messages.append(new_message)
-                    st.session_state.current_message_index = len(st.session_state.generated_messages) - 1
-                    st.rerun()
-            
-            if len(st.session_state.generated_messages) > 0:
-                st.markdown("---")
-                col_nav1, col_nav2 = st.columns(2)
                 
-                with col_nav1:
-                    if st.button("PREVIOUS", use_container_width=True):
-                        if st.session_state.current_message_index > 0:
-                            st.session_state.current_message_index -= 1
-                            st.rerun()
+                col_ref1, col_ref2, col_ref3 = st.columns(3)
                 
-                with col_nav2:
-                    if st.button("NEXT", use_container_width=True):
-                        if st.session_state.current_message_index < len(st.session_state.generated_messages) - 1:
-                            st.session_state.current_message_index += 1
-                            st.rerun()
-        
-        with col_msg1:
-            st.markdown("### GENERATED MESSAGES")
+                with col_ref1:
+                    if st.button("GENERATE WITH INSTRUCTIONS", use_container_width=True):
+                        if user_instructions and len(st.session_state.generated_messages) > 0:
+                            current_msg = st.session_state.generated_messages[st.session_state.current_message_index]
+                            
+                            with st.spinner("Creating refined message..."):
+                                refined_message = analyze_and_generate_message(
+                                    st.session_state.profile_data,
+                                    groq_api_key,
+                                    st.session_state.sender_name,
+                                    user_instructions,
+                                    current_msg
+                                )
+                                
+                                if refined_message:
+                                    st.session_state.generated_messages.append(refined_message)
+                                    st.session_state.current_message_index = len(st.session_state.generated_messages) - 1
+                                    st.session_state.regenerate_mode = False
+                                    st.session_state.message_instructions = ""
+                                    st.rerun()
+                
+                with col_ref2:
+                    if st.button("USE ORIGINAL", use_container_width=True):
+                        st.session_state.regenerate_mode = False
+                        st.rerun()
+                
+                with col_ref3:
+                    if st.button("CANCEL", use_container_width=True):
+                        st.session_state.regenerate_mode = False
+                        st.session_state.message_instructions = ""
+                        st.rerun()
             
+            st.markdown("</div>")
+            
+            # Display current message
             if len(st.session_state.generated_messages) > 0:
                 current_msg = st.session_state.generated_messages[st.session_state.current_message_index]
                 
                 st.markdown("<div class='terminal-box'>", unsafe_allow_html=True)
-                st.markdown(f"**MESSAGE {st.session_state.current_message_index + 1} OF {len(st.session_state.generated_messages)}**")
-                st.markdown(f"LENGTH: {len(current_msg)} characters")
+                st.markdown(f"**CURRENT MESSAGE**")
+                if st.session_state.regenerate_mode:
+                    st.markdown("*Refinement mode active*")
+                st.markdown(f"Length: {len(current_msg)} characters")
                 st.markdown("---")
                 st.markdown(current_msg)
-                st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("</div>")
                 
+                # Copy functionality
                 st.code(current_msg, language=None)
                 
+                # Navigation and history
                 if len(st.session_state.generated_messages) > 1:
-                    st.markdown("### MESSAGE HISTORY")
+                    st.markdown("#### NAVIGATION")
+                    col_nav1, col_nav2, col_nav3 = st.columns(3)
+                    
+                    with col_nav1:
+                        if st.button("PREVIOUS", use_container_width=True):
+                            if st.session_state.current_message_index > 0:
+                                st.session_state.current_message_index -= 1
+                                st.session_state.regenerate_mode = False
+                                st.rerun()
+                    
+                    with col_nav2:
+                        st.markdown(f"**{st.session_state.current_message_index + 1} / {len(st.session_state.generated_messages)}**")
+                    
+                    with col_nav3:
+                        if st.button("NEXT", use_container_width=True):
+                            if st.session_state.current_message_index < len(st.session_state.generated_messages) - 1:
+                                st.session_state.current_message_index += 1
+                                st.session_state.regenerate_mode = False
+                                st.rerun()
+                    
+                    # Message history
+                    st.markdown("#### MESSAGE HISTORY")
                     for idx, msg in enumerate(st.session_state.generated_messages):
                         is_active = idx == st.session_state.current_message_index
                         active_class = "active" if is_active else ""
                         st.markdown(f"""
                         <div class="message-history-item {active_class}">
-                            <small>MESSAGE #{idx + 1} | {len(msg)} chars</small><br>
-                            {msg[:100]}...
+                            <small>Version {idx + 1} • {len(msg)} chars</small><br>
+                            {msg.split('\\n')[0][:80]}...
                         </div>
                         """, unsafe_allow_html=True)
             else:
-                st.info("Click GENERATE NEW MESSAGE to create your first message")
+                st.info("Generate your first message using the button above.")
+        else:
+            st.info("Complete profile analysis first to generate messages.")
     
     with tab3:
         st.markdown("<div class='terminal-box'>", unsafe_allow_html=True)
@@ -690,12 +755,8 @@ with col_f3:
         if isinstance(st.session_state.profile_data, dict):
             if 'fullname' in st.session_state.profile_data:
                 name = st.session_state.profile_data['fullname']
+            elif 'basic_info' in st.session_state.profile_data and 'fullname' in st.session_state.profile_data['basic_info']:
+                name = st.session_state.profile_data['basic_info']['fullname']
         st.markdown(f"**CURRENT**: {name[:20]}")
     else:
         st.markdown("**CURRENT**: No Profile")
-
-# --- Deployment Instructions ---
-with st.expander("DEPLOYMENT INFORMATION"):
-    st.markdown("""
-  
-    """)
