@@ -7,34 +7,11 @@ import time
 # ========== API FUNCTIONS ==========
 
 def extract_username_from_url(profile_url: str) -> str:
-    """Extract username from LinkedIn URL with robust handling."""
-    if not profile_url:
-        return ""
+    """Extract username from LinkedIn URL."""
+    if "/in/" in profile_url:
+        return profile_url.split("/in/")[-1].strip("/").split("?")[0]
+    return profile_url
     
-    # Clean the URL
-    url = profile_url.strip().lower()
-    
-    # Remove common prefixes and suffixes
-    url = url.replace("https://", "").replace("http://", "").replace("www.", "")
-    url = url.replace("linkedin.com/in/", "").replace("linkedin.com/pub/", "")
-    
-    # Split on common delimiters
-    if "/" in url:
-        username = url.split("/")[0]
-    elif "?" in url:
-        username = url.split("?")[0]
-    else:
-        username = url
-    
-    # Remove any remaining query parameters
-    username = username.split("?")[0].split("&")[0].rstrip("/")
-    
-    # Validate it looks like a LinkedIn username (alphanumeric, dashes, underscores)
-    if not username or len(username) < 2:
-        raise ValueError("Invalid LinkedIn URL format")
-    
-    return username
-
 def start_apify_run(username: str, api_key: str) -> dict:
     """
     Start the Apify actor run asynchronously.
