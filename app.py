@@ -7,10 +7,33 @@ import time
 # ========== API FUNCTIONS ==========
 
 def extract_username_from_url(profile_url: str) -> str:
-    """Extract username from LinkedIn URL."""
-    if "/in/" in profile_url:
-        return profile_url.split("/in/")[-1].strip("/").split("?")[0]
-    return profile_url
+    """Extract username from LinkedIn URL with robust handling."""
+    if not profile_url:
+        return ""
+    
+    # Clean the URL
+    url = profile_url.strip().lower()
+    
+    # Remove common prefixes and suffixes
+    url = url.replace("https://", "").replace("http://", "").replace("www.", "")
+    url = url.replace("linkedin.com/in/", "").replace("linkedin.com/pub/", "")
+    
+    # Split on common delimiters
+    if "/" in url:
+        username = url.split("/")[0]
+    elif "?" in url:
+        username = url.split("?")[0]
+    else:
+        username = url
+    
+    # Remove any remaining query parameters
+    username = username.split("?")[0].split("&")[0].rstrip("/")
+    
+    # Validate it looks like a LinkedIn username (alphanumeric, dashes, underscores)
+    if not username or len(username) < 2:
+        raise ValueError("Invalid LinkedIn URL format")
+    
+    return username
 
 def start_apify_run(username: str, api_key: str) -> dict:
     """
@@ -172,11 +195,44 @@ def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: 
                                 user_instructions: str = None, previous_message: str = None) -> str:
     """
     LLM analyzes message patterns organically and generates a natural message.
-    Users can provide instructions to refine messages.
     """
-    # Prepare profile summary
-    profile_summary = json.dumps(profile_data, indent=2)[:1500]
+    # Extract key information from profile
+    profile_summary = ""
+    prospect_name = "there"
     
+    try:
+        # Try to get the prospect's name
+        if isinstance(profile_data, dict):
+            if profile_data.get('fullname'):
+                prospect_name = profile_data.get('fullname').split()[0]  # First name
+            elif profile_data.get('basic_info') and profile_data['basic_info'].get('fullname'):
+                prospect_name = profile_data['basic_info']['fullname'].split()[0]
+        
+        # Create a rich profile summary for the LLM
+        profile_elements = []
+        
+        if isinstance(profile_data, dict):
+            # Extract key elements
+            if profile_data.get('headline'):
+                profile_elements.append(f"Current Role: {profile_data['headline']}")
+            if profile_data.get('about'):
+                profile_elements.append(f"About: {profile_data['about'][:300]}")
+            if profile_data.get('experience'):
+                # Get current/most recent experience
+                experiences = profile_data.get('experience', [])
+                if experiences and len(experiences) > 0:
+                    current_exp = experiences[0]
+                    profile_elements.append(f"Current Position: {current_exp.get('title', '')} at {current_exp.get('company', '')}")
+            if profile_data.get('education'):
+                edu = profile_data.get('education', [])
+                if edu and len(edu) > 0:
+                    profile_elements.append(f"Education: {edu[0].get('school', '')} - {edu[0].get('degree', '')}")
+        
+        profile_summary = "\n".join(profile_elements)
+        
+    except Exception as e:
+        profile_summary = json.dumps(profile_data, indent=2)[:1500]
+
     # Build learning examples from your messages
     learning_examples = '''
     "Hi David,
@@ -202,57 +258,45 @@ def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: 
     
     if user_instructions and previous_message:
         # Refinement mode
-        prompt = f'''
-        REFINE THIS MESSAGE BASED ON USER INSTRUCTIONS:
-        
-        ORIGINAL MESSAGE:
-        {previous_message}
-        
-        USER INSTRUCTIONS:
-        {user_instructions}
-        
-        PROFILE CONTEXT:
-        {profile_summary}
-        
-        MESSAGE PATTERN EXAMPLES:
-        {learning_examples}
-        
-        TASK: Modify the original message following the user's instructions while maintaining:
-        1. Under 275 characters
-        2. Natural three-part structure (about them, about you, connection)
-        3. Professional tone matching the examples
-        4. End with: Best, {sender_name}
-        
-        Generate only the refined message.
-        '''
+        prompt = f'''IMPORTANT: Create a PERSONALIZED LinkedIn connection message for {prospect_name}.
+
+PROFILE DETAILS:
+{profile_summary}
+
+REFINE THIS EXISTING MESSAGE:
+{previous_message}
+
+USER'S INSTRUCTIONS FOR REFINEMENT:
+{user_instructions}
+
+CRITICAL REQUIREMENTS:
+1. ALWAYS start with "Hi [First Name]," using the person's actual name
+2. Mention something SPECIFIC from their profile
+3. Keep it under 275 characters total
+4. End with "Best, {sender_name}"
+5. Make it natural, not generic
+
+Generate ONLY the refined message:'''
     else:
-        # New generation mode
-        prompt = f'''
-        ANALYZE THESE MESSAGE PATTERNS AND CREATE A NEW ONE:
-        
-        STUDY THESE NATURAL MESSAGES (understand their organic flow):
-        {learning_examples}
-        
-        OBSERVED PATTERN (not template):
-        1. Personalized opening about recipient's work/thoughts/recent activity
-        2. What sender does related to that work
-        3. Natural connection request
-        4. Under 275 characters
-        5. Ends with: Best, [Sender Name]
-        
-        NOW CREATE A MESSAGE FOR THIS PROFILE:
-        {profile_summary}
-        
-        YOUR TASK:
-        1. ANALYZE the profile data naturally
-        2. CREATE a message that follows the organic pattern you observed
-        3. DO NOT use templates or fixed structures
-        4. Make it feel personal and specific to this person
-        5. Keep under 275 characters
-        6. Sign it: Best, {sender_name}
-        
-        Generate only the message content.
-        '''
+        # New generation mode - STRONGER PROMPT
+        prompt = f'''IMPORTANT: Create a PERSONALIZED LinkedIn connection message for {prospect_name}.
+
+PROFILE DETAILS:
+{profile_summary}
+
+STUDY THESE EXAMPLE MESSAGES (notice they always start with the person's name):
+{learning_examples}
+
+CRITICAL INSTRUCTIONS:
+1. You MUST start the message with "Hi {prospect_name},"
+2. You MUST mention something specific from their profile (current role, experience, education, etc.)
+3. Keep the message under 275 characters total
+4. Structure: Opening about them + What you do + Connection request
+5. End with: Best, {sender_name}
+6. DO NOT use generic phrases like "came across your profile"
+7. Make it feel personal and authentic
+
+Generate ONLY the personalized message:'''
     
     try:
         headers = {
@@ -265,13 +309,18 @@ def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: 
             "messages": [
                 {
                     "role": "system", 
-                    "content": f'''You are a skilled communicator who understands message patterns organically. 
-                    You don't use templates. You analyze how people naturally write and create messages with similar flow.
-                    You're creative but professional. Your signature is always: Best, {sender_name}'''
+                    "content": f'''You are an expert at writing personalized LinkedIn connection messages.
+                    Your messages ALWAYS:
+                    1. Start with the person's first name
+                    2. Reference something specific from their profile
+                    3. Are under 275 characters
+                    4. End with "Best, {sender_name}"
+                    5. Sound professional but conversational
+                    6. Never use generic, templated language'''
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.8,
+            "temperature": 0.7,
             "max_tokens": 350
         }
         
@@ -285,37 +334,58 @@ def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: 
         if response.status_code == 200:
             message = response.json()["choices"][0]["message"]["content"].strip()
             
-            # Clean up but preserve natural flow
-            message = message.replace('"', '').replace("''", "'")
+            # Clean up
+            message = message.replace('"', '').replace("''", "'").strip()
+            
+            # Ensure it starts with Hi [Name],
+            if not message.lower().startswith(f"hi {prospect_name.lower()},") and not message.lower().startswith(f"hi there,"):
+                # Try to add the name if missing
+                if message.lower().startswith("hi "):
+                    # It has Hi but wrong name
+                    lines = message.split('\n')
+                    first_line = lines[0]
+                    if ',' in first_line:
+                        first_line = f"Hi {prospect_name},"
+                        lines[0] = first_line
+                        message = '\n'.join(lines)
+                else:
+                    # No Hi at all
+                    message = f"Hi {prospect_name},\n{message}"
             
             # Ensure proper signature
-            if f"Best, {sender_name}" not in message:
+            if not message.strip().endswith(f"Best, {sender_name}"):
                 message = f"{message.rstrip()}\nBest, {sender_name}"
             
-            # Length check
+            # Length check and truncate if necessary
             if len(message) > 275:
-                # Try to shorten while preserving meaning
+                # Try to preserve the structure
                 lines = message.split('\n')
                 if len(lines) >= 2:
-                    # Keep the core parts
-                    important_lines = [lines[0]]
+                    # Keep first line (greeting) and last line (signature)
+                    shortened = [lines[0]]
+                    # Add middle lines until we hit limit
+                    current_length = len(lines[0]) + len(lines[-1])
                     for line in lines[1:-1]:
-                        if line.strip() and 'Best,' not in line:
-                            important_lines.append(line)
-                            if len('\n'.join(important_lines)) > 200:
-                                break
-                    important_lines.append(lines[-1])
-                    message = '\n'.join(important_lines)
+                        if current_length + len(line) < 250:
+                            shortened.append(line)
+                            current_length += len(line)
+                        else:
+                            break
+                    shortened.append(lines[-1])
+                    message = '\n'.join(shortened)
                 
                 if len(message) > 275:
                     message = message[:272] + '...'
             
             return message
+            
         else:
-            return f"Hi there,\nI came across your profile and wanted to connect.\nI focus on workflow automation in your industry.\nWould be glad to connect.\nBest, {sender_name}"
+            # Fallback with personalized greeting
+            return f"Hi {prospect_name},\nI noticed your professional background and wanted to connect.\nI focus on workflow automation in your industry.\nWould be glad to connect.\nBest, {sender_name}"
             
     except Exception as e:
-        return f"Hi,\nYour professional background caught my attention.\nI work on operational improvements in your field.\nWould be good to connect.\nBest, {sender_name}"
+        # Personalized fallback
+        return f"Hi {prospect_name},\nYour professional experience caught my attention.\nI work on operational improvements in your field.\nWould be good to connect.\nBest, {sender_name}"
 
 # ========== STREAMLIT APPLICATION ==========
 
