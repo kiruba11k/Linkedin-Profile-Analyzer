@@ -135,7 +135,7 @@ def generate_research_brief(profile_data: dict, api_key: str) -> str:
         }
         
         payload = {
-            "model": "mixtral-8x7b-32768",
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {
                     "role": "system",
