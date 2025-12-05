@@ -3,11 +3,11 @@ import requests
 import json
 from datetime import datetime
 import time
-import random
 
 # ========== API FUNCTIONS ==========
 apify_api_key = st.secrets.get("APIFY", "")
 groq_api_key = st.secrets.get("GROQ", "")
+
 def extract_username_from_url(profile_url: str) -> str:
     """Extract username from LinkedIn URL."""
     if "/in/" in profile_url:
@@ -163,7 +163,7 @@ def generate_research_brief(profile_data: dict, api_key: str) -> str:
     except Exception as e:
         return f"Profile analysis ready. Focus on message generation."
 
-def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: str, 
+def analyze_and_generate_message(profile_data: dict, api_key: str, sender_info: dict, 
                                 user_instructions: str = None, previous_message: str = None) -> str:
     """
     LLM analyzes message patterns organically and generates a natural message.
@@ -207,12 +207,24 @@ def analyze_and_generate_message(profile_data: dict, api_key: str, sender_name: 
     except Exception as e:
         profile_summary = json.dumps(profile_data, indent=2)[:1500]
 
+    # Build sender context for the AI
+    sender_context = ""
+    if sender_info.get('company'):
+        sender_context += f"I work at {sender_info['company']}. "
+    if sender_info.get('role'):
+        sender_context += f"My role is {sender_info['role']}. "
+    if sender_info.get('expertise'):
+        sender_context += f"I focus on {sender_info['expertise']}. "
+
     if user_instructions and previous_message:
         # Refinement mode
         prompt = f'''Generate a refined LinkedIn connection message for {prospect_name}.
 
 PROFILE CONTEXT:
 {profile_summary}
+
+SENDER CONTEXT:
+{sender_context}
 
 ORIGINAL MESSAGE TO REFINE:
 {previous_message}
@@ -223,7 +235,7 @@ REFINEMENT INSTRUCTIONS:
 CRITICAL GUIDELINES:
 1. Start with "Hi [First Name],"
 2. Reference ONE specific element from their profile (current role, education, or headline)
-3. Mention YOUR value/interest (but not specific company names unless in profile)
+3. Mention YOUR value/interest based on sender context
 4. End with "Best, [Your Name]"
 5. Keep under 250 characters
 6. DO NOT copy phrases from any example messages
@@ -237,11 +249,14 @@ Generate only the message:'''
 PROFILE CONTEXT:
 {profile_summary}
 
+YOUR INFORMATION (SENDER):
+{sender_context}
+
 GUIDELINES FOR CREATION:
 1. Start with "Hi {prospect_name},"
 2. Reference ONE specific element from their profile (current role at company, education, or headline)
-3. Connect it to your general interest/field WITHOUT naming specific companies
-4. End with "Best, {sender_name}"
+3. Connect it to your background/field mentioned above
+4. End with "Best, {sender_info['name']}"
 5. Keep entire message under 250 characters
 6. MUST be unique - do not copy any example structures
 7. Use natural, conversational tone
@@ -293,8 +308,8 @@ Generate only the message:'''
                     message = f"Hi {prospect_name},\n{message}"
             
             # Ensure proper signature
-            if not message.strip().endswith(f"Best, {sender_name}"):
-                message = f"{message.rstrip()}\nBest, {sender_name}"
+            if not message.strip().endswith(f"Best, {sender_info['name']}"):
+                message = f"{message.rstrip()}\nBest, {sender_info['name']}"
             
             # Verify message doesn't copy examples
             forbidden_patterns = [
@@ -330,8 +345,8 @@ Generate only the message:'''
                     if strict_response.status_code == 200:
                         message = strict_response.json()["choices"][0]["message"]["content"].strip()
                         message = f"Hi {prospect_name},\n{message}"
-                        if not message.endswith(f"Best, {sender_name}"):
-                            message = f"{message}\nBest, {sender_name}"
+                        if not message.endswith(f"Best, {sender_info['name']}"):
+                            message = f"{message}\nBest, {sender_info['name']}"
                     break
             
             # Final length check
@@ -344,10 +359,10 @@ Generate only the message:'''
             return message
             
         else:
-            return f"Hi {prospect_name},\nI noticed your professional background and wanted to connect regarding mutual interests in your field.\nBest, {sender_name}"
+            return f"Hi {prospect_name},\nI noticed your professional background and wanted to connect regarding mutual interests in your field.\nBest, {sender_info['name']}"
             
     except Exception as e:
-        return f"Hi {prospect_name},\nYour experience looks impressive. Would be great to connect and exchange insights.\nBest, {sender_name}"
+        return f"Hi {prospect_name},\nYour experience looks impressive. Would be great to connect and exchange insights.\nBest, {sender_info['name']}"
 
 # ========== STREAMLIT APPLICATION ==========
 
@@ -358,10 +373,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Modern 3D Color Theory CSS ---
-# Color Palette: Deep Navy (#0a192f), Electric Blue (#00b4d8), Neon Cyan (#00ffd0), White (#ffffff)
-# Accent: Coral (#ff6b6b), Lavender (#c8b6ff)
-
+# --- Modern 3D Color Theory CSS with Enhanced Input Effects ---
 modern_3d_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
@@ -379,42 +391,42 @@ modern_3d_css = """
     }
     
     /* Main 3D Card */
-    # .main-3d-card {
-    #     background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-    #     backdrop-filter: blur(20px);
-    #     border-radius: 32px;
-    #     padding: 50px;
-    #     margin: 30px;
-    #     border: 1px solid rgba(0, 180, 216, 0.1);
-    #     box-shadow: 
-    #         0 50px 100px rgba(0, 180, 216, 0.1),
-    #         inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    #         0 0 100px rgba(0, 180, 216, 0.05);
-    #     transform: rotateY(-2deg) rotateX(1deg);
-    #     animation: float3d 6s ease-in-out infinite;
-    #     position: relative;
-    #     overflow: hidden;
-    # }
+    .main-3d-card {
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+        backdrop-filter: blur(20px);
+        border-radius: 32px;
+        padding: 50px;
+        margin: 30px;
+        border: 1px solid rgba(0, 180, 216, 0.1);
+        box-shadow: 
+            0 50px 100px rgba(0, 180, 216, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1),
+            0 0 100px rgba(0, 180, 216, 0.05);
+        transform: rotateY(-2deg) rotateX(1deg);
+        animation: float3d 6s ease-in-out infinite;
+        position: relative;
+        overflow: hidden;
+    }
     
-    # @keyframes float3d {
-    #     0%, 100% { transform: rotateY(-2deg) rotateX(1deg) translateY(0); }
-    #     50% { transform: rotateY(-2deg) rotateX(1deg) translateY(-10px); }
-    # }
+    @keyframes float3d {
+        0%, 100% { transform: rotateY(-2deg) rotateX(1deg) translateY(0); }
+        50% { transform: rotateY(-2deg) rotateX(1deg) translateY(-10px); }
+    }
     
-    # .main-3d-card::before {
-    #     content: '';
-    #     position: absolute;
-    #     top: 0;
-    #     left: -100%;
-    #     width: 100%;
-    #     height: 100%;
-    #     background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.1), transparent);
-    #     transition: 0.5s;
-    # }
+    .main-3d-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.1), transparent);
+        transition: 0.5s;
+    }
     
-    # .main-3d-card:hover::before {
-    #     left: 100%;
-    # }
+    .main-3d-card:hover::before {
+        left: 100%;
+    }
     
     /* Neural Network Background */
     .neural-network {
@@ -443,126 +455,71 @@ modern_3d_css = """
         100% { background-position: 100% 50%; }
     }
     
-    .gradient-text-secondary {
-        background: linear-gradient(135deg, #c8b6ff 0%, #ff6b6b 100%);
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-    }
-    
-    /* 3D Buttons */
-    .btn-3d-primary {
-        background: linear-gradient(135deg, #00b4d8 0%, #0077b6 100%);
-        color: white;
-        border: none;
-        padding: 18px 36px;
+    /* Enhanced 3D Input Fields with Animations */
+    .enhanced-input-3d {
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+        border: 2px solid rgba(0, 180, 216, 0.15);
         border-radius: 16px;
-        font-family: 'Space Grotesk', sans-serif;
-        font-weight: 600;
-        font-size: 1rem;
-        cursor: pointer;
-        transform-style: preserve-3d;
-        transition: all 0.3s ease;
-        box-shadow: 
-            0 10px 30px rgba(0, 180, 216, 0.4),
-            0 5px 15px rgba(0, 180, 216, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.3);
-        position: relative;
-        overflow: hidden;
-        letter-spacing: 0.5px;
-    }
-    
-    .btn-3d-primary::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-        transition: 0.5s;
-    }
-    
-    .btn-3d-primary:hover::before {
-        left: 100%;
-    }
-    
-    .btn-3d-primary:hover {
-        transform: translateY(-3px) scale(1.02);
-        box-shadow: 
-            0 15px 40px rgba(0, 180, 216, 0.6),
-            0 8px 25px rgba(0, 180, 216, 0.4),
-            inset 0 1px 0 rgba(255, 255, 255, 0.4);
-    }
-    
-    .btn-3d-primary:active {
-        transform: translateY(-1px);
-        box-shadow: 
-            0 5px 20px rgba(0, 180, 216, 0.4),
-            inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    }
-    
-    /* 3D Cards */
-    .card-3d {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 24px;
-        padding: 30px;
-        margin: 20px 0;
-        border: 1px solid rgba(0, 180, 216, 0.1);
-        transform-style: preserve-3d;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        backdrop-filter: blur(10px);
-        box-shadow: 
-            0 20px 60px rgba(0, 0, 0, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .card-3d::before {
-        content: '';
-        position: absolute;
-        top: -2px;
-        left: -2px;
-        right: -2px;
-        bottom: -2px;
-        background: linear-gradient(45deg, #00b4d8, #00ffd0, #0077b6, #c8b6ff);
-        border-radius: 26px;
-        z-index: -1;
-        opacity: 0;
-        transition: opacity 0.4s ease;
-    }
-    
-    .card-3d:hover::before {
-        opacity: 0.3;
-    }
-    
-    .card-3d:hover {
-        transform: translateY(-5px) rotateX(1deg) rotateY(-1deg);
-        border-color: rgba(0, 180, 216, 0.3);
-        box-shadow: 
-            0 30px 80px rgba(0, 180, 216, 0.2),
-            inset 0 1px 0 rgba(255, 255, 255, 0.15);
-    }
-    
-    /* Input Fields */
-    .input-3d {
-        background: rgba(255, 255, 255, 0.05);
-        border: 2px solid rgba(0, 180, 216, 0.2);
-        border-radius: 16px;
-        padding: 18px 24px;
+        padding: 20px 24px;
         font-family: 'Space Grotesk', sans-serif;
         font-size: 1rem;
         color: #e6f7ff;
-        transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        backdrop-filter: blur(15px);
+        transform-style: preserve-3d;
+        position: relative;
+        box-shadow: 
+            inset 0 2px 4px rgba(0, 0, 0, 0.1),
+            0 8px 32px rgba(0, 180, 216, 0.1);
     }
     
-    .input-3d:focus {
-        background: rgba(255, 255, 255, 0.08);
+    .enhanced-input-3d:focus {
+        background: linear-gradient(145deg, rgba(0, 180, 216, 0.05), rgba(0, 255, 208, 0.03));
         border-color: #00b4d8;
-        box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.1);
+        box-shadow: 
+            0 0 0 4px rgba(0, 180, 216, 0.15),
+            inset 0 2px 8px rgba(0, 180, 216, 0.1),
+            0 12px 40px rgba(0, 180, 216, 0.2);
+        transform: translateY(-3px) scale(1.02);
         outline: none;
+    }
+    
+    .enhanced-input-3d::placeholder {
+        color: rgba(136, 146, 176, 0.7);
+        font-weight: 400;
+    }
+    
+    /* Input glow animation on focus */
+    @keyframes inputGlow {
+        0%, 100% { box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.15); }
+        50% { box-shadow: 0 0 0 6px rgba(0, 180, 216, 0.25); }
+    }
+    
+    .enhanced-input-3d:focus {
+        animation: inputGlow 2s ease-in-out infinite;
+    }
+    
+    /* 3D Cards for Configuration */
+    .config-card-3d {
+        background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+        border-radius: 20px;
+        padding: 25px;
+        margin: 15px 0;
+        border: 1px solid rgba(0, 180, 216, 0.1);
+        transform-style: preserve-3d;
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        backdrop-filter: blur(15px);
+        box-shadow: 
+            0 20px 60px rgba(0, 0, 0, 0.2),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    
+    .config-card-3d:hover {
+        transform: translateY(-5px) rotateX(2deg);
+        border-color: rgba(0, 180, 216, 0.3);
+        box-shadow: 
+            0 30px 80px rgba(0, 180, 216, 0.15),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
     
     /* Status Indicators */
@@ -593,37 +550,6 @@ modern_3d_css = """
         }
     }
     
-    /* Tab Styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-        background: rgba(255, 255, 255, 0.03);
-        padding: 8px;
-        border-radius: 20px;
-        border: 1px solid rgba(0, 180, 216, 0.1);
-        backdrop-filter: blur(10px);
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background: transparent;
-        border-radius: 16px;
-        padding: 12px 24px;
-        font-family: 'Space Grotesk', sans-serif;
-        font-weight: 500;
-        color: #8892b0;
-        transition: all 0.3s ease;
-    }
-    
-    .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(0, 180, 216, 0.1);
-        color: #00b4d8;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background: linear-gradient(135deg, #00b4d8, #0077b6);
-        color: white !important;
-        box-shadow: 0 5px 15px rgba(0, 180, 216, 0.3);
-    }
-    
     /* Message Display */
     .message-display-3d {
         background: linear-gradient(135deg, rgba(0, 180, 216, 0.05), rgba(0, 255, 208, 0.05));
@@ -650,24 +576,49 @@ modern_3d_css = """
         }
     }
     
-    /* Icon Styling */
-    .icon-wrapper {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 48px;
-        height: 48px;
-        background: linear-gradient(135deg, #00b4d8, #0077b6);
-        border-radius: 12px;
-        margin-right: 16px;
-        box-shadow: 0 8px 20px rgba(0, 180, 216, 0.3);
+    /* Save Button Animation */
+    .save-button {
+        background: linear-gradient(135deg, #00b4d8 0%, #0077b6 100%);
+        color: white;
+        border: none;
+        padding: 14px 28px;
+        border-radius: 14px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
         transform-style: preserve-3d;
         transition: all 0.3s ease;
+        box-shadow: 
+            0 8px 25px rgba(0, 180, 216, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        position: relative;
+        overflow: hidden;
     }
     
-    .icon-wrapper:hover {
-        transform: translateY(-3px) rotateY(5deg);
-        box-shadow: 0 12px 30px rgba(0, 180, 216, 0.4);
+    .save-button:hover {
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 
+            0 12px 35px rgba(0, 180, 216, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+    
+    .save-button:active {
+        transform: translateY(0);
+        box-shadow: 
+            0 5px 20px rgba(0, 180, 216, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    
+    /* Success Animation */
+    @keyframes successPulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    
+    .success-animation {
+        animation: successPulse 0.5s ease-in-out;
     }
     
     /* Scrollbar */
@@ -688,47 +639,7 @@ modern_3d_css = """
     ::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(135deg, #00ffd0, #00b4d8);
     }
-    
-    /* Holographic Effect */
-    .holographic {
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .holographic::after {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: linear-gradient(
-            to bottom right,
-            transparent 30%,
-            rgba(255, 255, 255, 0.1) 50%,
-                    transparent 70%
-        );
-        transform: rotate(45deg);
-        animation: hologram 4s linear infinite;
-    }
-    
-    @keyframes hologram {
-        0% { transform: rotate(45deg) translateX(-100%); }
-        100% { transform: rotate(45deg) translateX(100%); }
-    }
 </style>
-
-<!-- Neural Network Background SVG -->
-<svg class="neural-network" width="100%" height="100%">
-    <defs>
-        <linearGradient id="neuralGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#00b4d8" stop-opacity="0.3" />
-            <stop offset="50%" stop-color="#00ffd0" stop-opacity="0.2" />
-            <stop offset="100%" stop-color="#c8b6ff" stop-opacity="0.3" />
-        </linearGradient>
-    </defs>
-    <!-- Neural connections will be generated dynamically -->
-</svg>
 
 <!-- Font Awesome Icons -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -736,7 +647,7 @@ modern_3d_css = """
 
 st.markdown(modern_3d_css, unsafe_allow_html=True)
 
-# --- Initialize Session State ---
+# --- Initialize Session State with Sender Info ---
 if 'profile_data' not in st.session_state:
     st.session_state.profile_data = None
 if 'research_brief' not in st.session_state:
@@ -747,12 +658,20 @@ if 'current_message_index' not in st.session_state:
     st.session_state.current_message_index = -1
 if 'processing_status' not in st.session_state:
     st.session_state.processing_status = "System Ready"
-if 'sender_name' not in st.session_state:
-    st.session_state.sender_name = "Joseph"
+if 'sender_info' not in st.session_state:
+    st.session_state.sender_info = {
+        'name': '',
+        'company': '',
+        'role': '',
+        'expertise': '',
+        'configured': False
+    }
 if 'message_instructions' not in st.session_state:
     st.session_state.message_instructions = ""
 if 'regenerate_mode' not in st.session_state:
     st.session_state.regenerate_mode = False
+if 'show_success_animation' not in st.session_state:
+    st.session_state.show_success_animation = False
 
 # --- Main 3D Container ---
 st.markdown('<div class="perspective-container">', unsafe_allow_html=True)
@@ -765,21 +684,143 @@ with col1:
     st.markdown('<p style="color: #8892b0; font-size: 1.2rem; margin-bottom: 40px;">Advanced AI-Powered Prospect Intelligence Platform</p>', unsafe_allow_html=True)
 with col2:
     st.markdown(f'''
-    <div class="card-3d" style="text-align: center; padding: 20px;">
+    <div class="config-card-3d" style="text-align: center; padding: 20px;">
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
             <span class="status-orb {'active' if st.session_state.profile_data else ''}"></span>
             <span style="color: #e6f7ff; font-weight: 600;">{st.session_state.processing_status}</span>
         </div>
         <div style="color: #8892b0; font-size: 0.9rem;">
+            <div><i class="fas fa-user" style="margin-right: 8px;"></i> Sender: {st.session_state.sender_info['name'] or 'Not Set'}</div>
             <div><i class="fas fa-message" style="margin-right: 8px;"></i> Messages: {len(st.session_state.generated_messages)}</div>
             <div><i class="fas fa-clock" style="margin-right: 8px;"></i> {datetime.now().strftime('%H:%M:%S')}</div>
         </div>
     </div>
     ''', unsafe_allow_html=True)
 
+# --- SENDER CONFIGURATION SECTION ---
+st.markdown("---")
+st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-user-cog" style="margin-right: 12px;"></i>Sender Configuration</h3>', unsafe_allow_html=True)
+st.markdown('<p style="color: #8892b0; margin-bottom: 25px;">Configure your sender information for personalized message generation</p>', unsafe_allow_html=True)
+
+# Sender Configuration Form
+with st.form("sender_config_form"):
+    config_col1, config_col2 = st.columns(2)
+    
+    with config_col1:
+        sender_name = st.text_input(
+            "Your Full Name *",
+            value=st.session_state.sender_info.get('name', ''),
+            placeholder="Enter your name",
+            key="sender_name_input"
+        )
+        
+        sender_company = st.text_input(
+            "Your Company",
+            value=st.session_state.sender_info.get('company', ''),
+            placeholder="Company name",
+            key="sender_company_input"
+        )
+    
+    with config_col2:
+        sender_role = st.text_input(
+            "Your Role",
+            value=st.session_state.sender_info.get('role', ''),
+            placeholder="e.g., Sales Director, Product Manager",
+            key="sender_role_input"
+        )
+        
+        sender_expertise = st.text_input(
+            "Your Expertise/Industry Focus",
+            value=st.session_state.sender_info.get('expertise', ''),
+            placeholder="e.g., SaaS, AI, Financial Services",
+            key="sender_expertise_input"
+        )
+    
+    # Submit button
+    col_submit, col_clear = st.columns([2, 1])
+    
+    with col_submit:
+        config_submitted = st.form_submit_button(
+            "💾 Save Sender Configuration",
+            use_container_width=True
+        )
+    
+    with col_clear:
+        if st.form_submit_button(
+            "🗑️ Clear Configuration",
+            use_container_width=True,
+            type="secondary"
+        ):
+            st.session_state.sender_info = {
+                'name': '',
+                'company': '',
+                'role': '',
+                'expertise': '',
+                'configured': False
+            }
+            st.session_state.show_success_animation = False
+            st.rerun()
+
+# Handle configuration submission
+if config_submitted:
+    if sender_name.strip():
+        st.session_state.sender_info = {
+            'name': sender_name.strip(),
+            'company': sender_company.strip(),
+            'role': sender_role.strip(),
+            'expertise': sender_expertise.strip(),
+            'configured': True
+        }
+        st.session_state.show_success_animation = True
+        st.success("✅ Sender configuration saved successfully!")
+        
+        # Add animation effect
+        st.markdown("""
+        <script>
+        setTimeout(() => {
+            const elements = document.querySelectorAll('.config-card-3d');
+            elements.forEach(el => {
+                el.classList.add('success-animation');
+                setTimeout(() => el.classList.remove('success-animation'), 500);
+            });
+        }, 100);
+        </script>
+        """, unsafe_allow_html=True)
+    else:
+        st.error("❌ Please enter at least your name to save configuration.")
+
+# Display current configuration
+if st.session_state.sender_info['configured']:
+    st.markdown(f'''
+    <div class="config-card-3d" style="margin-top: 20px;">
+        <h4 style="color: #e6f7ff; margin-bottom: 15px; display: flex; align-items: center;">
+            <i class="fas fa-check-circle" style="color: #00ffd0; margin-right: 10px;"></i>
+            Current Configuration
+        </h4>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+            <div>
+                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Name</div>
+                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['name']}</div>
+            </div>
+            <div>
+                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Company</div>
+                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['company'] or 'Not specified'}</div>
+            </div>
+            <div>
+                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Role</div>
+                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['role'] or 'Not specified'}</div>
+            </div>
+            <div>
+                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Expertise</div>
+                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['expertise'] or 'Not specified'}</div>
+            </div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
 st.markdown("---")
 
-# --- Input Section ---
+# --- Profile Analysis Section ---
 st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 20px;"><i class="fas fa-search" style="margin-right: 12px;"></i>Profile Analysis</h3>', unsafe_allow_html=True)
 st.markdown('<p style="color: #8892b0; margin-bottom: 30px;">Enter LinkedIn profile URL for AI-powered analysis and message generation</p>', unsafe_allow_html=True)
 
@@ -797,8 +838,12 @@ with input_col2:
     analyze_clicked = st.button(
         "Initiate Analysis", 
         use_container_width=True,
-        key="analyze_btn"
+        key="analyze_btn",
+        disabled=not st.session_state.sender_info['configured']
     )
+
+if not st.session_state.sender_info['configured']:
+    st.warning("⚠️ Please configure your sender information above before analyzing profiles.")
 
 # Custom button styling
 st.markdown("""
@@ -825,12 +870,18 @@ div[data-testid="stButton"] > button[kind="secondary"] {
     width: 100%;
 }
 
-div[data-testid="stButton"] > button[kind="secondary"]:hover {
+div[data-testid="stButton"] > button[kind="secondary"]:hover:not(:disabled) {
     transform: translateY(-3px) scale(1.02);
     box-shadow: 
         0 15px 40px rgba(0, 180, 216, 0.6),
         0 8px 25px rgba(0, 180, 216, 0.4),
         inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+div[data-testid="stButton"] > button[kind="secondary"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: linear-gradient(135deg, #666 0%, #444 100%);
 }
 
 div[data-testid="stButton"] > button[kind="secondary"]::before {
@@ -851,10 +902,8 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover::before {
 """, unsafe_allow_html=True)
 
 # --- Processing Logic ---
-if analyze_clicked and linkedin_url:
+if analyze_clicked and linkedin_url and st.session_state.sender_info['configured']:
     with st.spinner(""):
-        
-        
         if not apify_api_key or not groq_api_key:
             st.error("API configuration required. Please verify secret keys.")
         else:
@@ -890,31 +939,6 @@ if analyze_clicked and linkedin_url:
 if st.session_state.profile_data and st.session_state.research_brief:
     st.markdown("---")
     
-    # Configuration Panel
-    with st.expander("Configuration Panel", expanded=False):
-        config_col1, config_col2 = st.columns(2)
-        with config_col1:
-            new_sender_name = st.text_input(
-                "Sender Name",
-                value=st.session_state.sender_name,
-                help="Name used in message signatures"
-            )
-            if new_sender_name != st.session_state.sender_name:
-                st.session_state.sender_name = new_sender_name
-        
-        with config_col2:
-            st.markdown(f'''
-            <div class="card-3d">
-                <h4 style="color: #e6f7ff; margin-bottom: 15px;"><i class="fas fa-cog" style="margin-right: 10px;"></i>System Status</h4>
-                <div style="color: #8892b0;">
-                    <div><i class="fas fa-user" style="margin-right: 8px;"></i> Sender: {st.session_state.sender_name}</div>
-                    <div><i class="fas fa-database" style="margin-right: 8px;"></i> Profile: Loaded</div>
-                    <div><i class="fas fa-file-alt" style="margin-right: 8px;"></i> Messages: {len(st.session_state.generated_messages)}</div>
-                    <div><i class="fas fa-bolt" style="margin-right: 8px;"></i> AI Model: Active</div>
-                </div>
-            </div>
-            ''', unsafe_allow_html=True)
-    
     # Tab Interface
     tab1, tab2, tab3 = st.tabs([
         "Message Generation", 
@@ -938,7 +962,7 @@ if st.session_state.profile_data and st.session_state.research_brief:
                     new_message = analyze_and_generate_message(
                         st.session_state.profile_data,
                         groq_api_key,
-                        st.session_state.sender_name
+                        st.session_state.sender_info
                     )
                     
                     if new_message:
@@ -1034,7 +1058,7 @@ if st.session_state.profile_data and st.session_state.research_brief:
                             refined_message = analyze_and_generate_message(
                                 st.session_state.profile_data,
                                 groq_api_key,
-                                st.session_state.sender_name,
+                                st.session_state.sender_info,
                                 instructions,
                                 current_msg
                             )
@@ -1080,7 +1104,7 @@ if st.session_state.profile_data and st.session_state.research_brief:
         
         else:
             st.markdown('''
-            <div class="card-3d" style="text-align: center; padding: 60px 30px;">
+            <div class="config-card-3d" style="text-align: center; padding: 60px 30px;">
                 <div style="font-size: 4rem; margin-bottom: 20px; color: #00b4d8;">
                     <i class="fas fa-comment-dots"></i>
                 </div>
@@ -1093,7 +1117,7 @@ if st.session_state.profile_data and st.session_state.research_brief:
     
     with tab2:
         st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-chart-line" style="margin-right: 12px;"></i>Research Intelligence Brief</h3>', unsafe_allow_html=True)
-        st.markdown('<div class="card-3d">', unsafe_allow_html=True)
+        st.markdown('<div class="config-card-3d">', unsafe_allow_html=True)
         st.markdown(st.session_state.research_brief)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -1161,10 +1185,10 @@ with col_f3:
     else:
         st.markdown('<p style="color: #8892b0; font-size: 0.9rem; text-align: right;">Status: Ready</p>', unsafe_allow_html=True)
 
-# Add JavaScript for 3D effects
+# Add JavaScript for Enhanced 3D Effects and Input Animations
 st.markdown("""
 <script>
-// Add 3D tilt effect to main card
+// Enhanced 3D tilt effect to main card
 document.addEventListener('DOMContentLoaded', function() {
     const mainCard = document.querySelector('.main-3d-card');
     
@@ -1177,8 +1201,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const centerX = rect.width / 2;
             const centerY = rect.height / 2;
             
-            const rotateY = ((x - centerX) / centerX) * 2;
-            const rotateX = ((centerY - y) / centerY) * 2;
+            const rotateY = ((x - centerX) / centerX) * 3;
+            const rotateX = ((centerY - y) / centerY) * 3;
             
             this.style.transform = `rotateY(${rotateY}deg) rotateX(${rotateX}deg) translateY(-10px)`;
         });
@@ -1188,6 +1212,18 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // Enhanced input focus effects
+    const enhancedInputs = document.querySelectorAll('.enhanced-input-3d');
+    enhancedInputs.forEach(input => {
+        input.addEventListener('focus', function() {
+            this.parentElement.style.transform = 'translateY(-5px)';
+        });
+        
+        input.addEventListener('blur', function() {
+            this.parentElement.style.transform = 'translateY(0)';
+        });
+    });
+    
     // Message history click handler
     const urlParams = new URLSearchParams(window.location.search);
     const selectIdx = urlParams.get('select');
@@ -1195,6 +1231,13 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
             window.history.replaceState({}, document.title, window.location.pathname);
         }, 100);
+    }
+    
+    // Success animation trigger
+    if (document.querySelector('.success-animation')) {
+        setTimeout(() => {
+            document.querySelector('.success-animation').classList.remove('success-animation');
+        }, 500);
     }
 });
 </script>
