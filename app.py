@@ -352,7 +352,7 @@ Generate only the message:'''
 # ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
-    page_title="Neural Connect | AI Prospect Intelligence",
+    page_title="Linzy | AI Prospect Intelligence",
     page_icon="",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -1111,7 +1111,7 @@ else:
                 <i class="fas fa-brain" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 3rem; color: white;"></i>
             </div>
         </div>
-        <h2 style="color: #e6f7ff; margin-bottom: 20px; font-size: 2.5rem;">Neural Connect Platform</h2>
+        <h2 style="color: #e6f7ff; margin-bottom: 20px; font-size: 2.5rem;">LINZY</h2>
         <p style="color: #8892b0; max-width: 600px; margin: 0 auto 50px; line-height: 1.8; font-size: 1.1rem;">
             Advanced AI-powered prospect intelligence system. Analyze LinkedIn profiles, generate personalized messages, and create detailed research briefs with neural network precision.
         </p>
@@ -1128,7 +1128,7 @@ else:
                     <i class="fas fa-robot"></i>
                 </div>
                 <h4 style="color: #e6f7ff; margin-bottom: 10px;">AI Powered</h4>
-                <p style="color: #8892b0; font-size: 0.9rem;">Neural network message generation and refinement</p>
+                <p style="color: #8892b0; font-size: 0.9rem;">Linzy message generation and refinement</p>
             </div>
             <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
                 <div style="color: #c8b6ff; font-size: 2rem; margin-bottom: 15px;">
@@ -1148,7 +1148,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---")
 col_f1, col_f2, col_f3 = st.columns(3)
 with col_f1:
-    st.markdown('<p style="color: #8892b0; font-size: 0.9rem;">Neural Connect v2.1 | AI Prospect Intelligence</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: #8892b0; font-size: 0.9rem;">Linzy v2.1 | AI Prospect Intelligence</p>', unsafe_allow_html=True)
 with col_f2:
     st.markdown(f'<p style="color: #8892b0; font-size: 0.9rem; text-align: center;">Last Updated: {datetime.now().strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
 with col_f3:
