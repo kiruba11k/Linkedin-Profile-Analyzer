@@ -163,67 +163,141 @@ def generate_research_brief(profile_data: dict, api_key: str) -> str:
     except Exception as e:
         return f"Profile analysis ready. Focus on message generation."
 
-def analyze_and_generate_message(profile_data: dict, api_key: str, sender_info: dict, 
-                                user_instructions: str = None, previous_message: str = None) -> str:
-    """
-    LLM analyzes message patterns organically and generates a natural message.
-    Uses cross-checking to prevent hallucinations.
-    """
-    # Extract key information from profile
-    prospect_name = "there"
-    profile_elements = []
+def analyze_sender_profile(sender_data: dict) -> dict:
+    """Extract key information from sender profile."""
+    sender_info = {
+        'name': '',
+        'headline': '',
+        'current_company': '',
+        'current_role': '',
+        'summary': '',
+        'experience': [],
+        'expertise': ''
+    }
     
     try:
-        if isinstance(profile_data, dict):
+        if isinstance(sender_data, dict):
             # Extract name
-            if profile_data.get('fullname'):
-                prospect_name = profile_data.get('fullname').split()[0]
-            elif profile_data.get('basic_info') and profile_data['basic_info'].get('fullname'):
-                prospect_name = profile_data['basic_info']['fullname'].split()[0]
+            if sender_data.get('fullname'):
+                sender_info['name'] = sender_data['fullname']
+            elif sender_data.get('basic_info') and sender_data['basic_info'].get('fullname'):
+                sender_info['name'] = sender_data['basic_info']['fullname']
             
-            # Extract key elements for context
-            if profile_data.get('headline'):
-                profile_elements.append(f"Headline: {profile_data['headline']}")
-            if profile_data.get('about'):
-                profile_elements.append(f"About: {profile_data['about'][:200]}")
-            if profile_data.get('experience'):
-                experiences = profile_data.get('experience', [])
+            # Extract headline
+            if sender_data.get('headline'):
+                sender_info['headline'] = sender_data['headline']
+                # Try to extract role and company from headline
+                headline_parts = sender_data['headline'].split(' at ')
+                if len(headline_parts) > 1:
+                    sender_info['current_role'] = headline_parts[0].strip()
+                    sender_info['current_company'] = headline_parts[1].strip()
+            
+            # Extract summary/about
+            if sender_data.get('about'):
+                sender_info['summary'] = sender_data['about'][:500]
+            
+            # Extract experience
+            if sender_data.get('experience'):
+                experiences = sender_data.get('experience', [])
+                if experiences and len(experiences) > 0:
+                    sender_info['experience'] = experiences
+                    if not sender_info['current_role'] and experiences[0].get('title'):
+                        sender_info['current_role'] = experiences[0].get('title')
+                    if not sender_info['current_company'] and experiences[0].get('company'):
+                        sender_info['current_company'] = experiences[0].get('company')
+            
+            # Determine expertise based on experience and summary
+            expertise_keywords = []
+            if sender_info['summary']:
+                tech_keywords = ['AI', 'machine learning', 'data', 'software', 'technology', 'engineering', 'cloud', 'SaaS', 'fintech']
+                for keyword in tech_keywords:
+                    if keyword.lower() in sender_info['summary'].lower():
+                        expertise_keywords.append(keyword)
+            
+            if expertise_keywords:
+                sender_info['expertise'] = ', '.join(expertise_keywords)
+            else:
+                sender_info['expertise'] = sender_info['current_role'] or "Professional"
+    
+    except Exception as e:
+        pass
+    
+    return sender_info
+
+def analyze_and_generate_message(prospect_data: dict, sender_data: dict, api_key: str, 
+                                user_instructions: str = None, previous_message: str = None) -> str:
+    """
+    Generate LinkedIn messages using 3-line structure:
+    1st line: About the prospect
+    2nd line: About sender's intention/value
+    3rd line: Connection request
+    """
+    # Extract prospect information
+    prospect_name = "there"
+    prospect_info = []
+    
+    try:
+        if isinstance(prospect_data, dict):
+            # Extract prospect name
+            if prospect_data.get('fullname'):
+                prospect_name = prospect_data.get('fullname').split()[0]
+            elif prospect_data.get('basic_info') and prospect_data['basic_info'].get('fullname'):
+                prospect_name = prospect_data['basic_info']['fullname'].split()[0]
+            
+            # Extract key elements for prospect
+            if prospect_data.get('headline'):
+                prospect_info.append(f"Current Role: {prospect_data['headline']}")
+            if prospect_data.get('about'):
+                prospect_info.append(f"About: {prospect_data['about'][:300]}")
+            if prospect_data.get('experience'):
+                experiences = prospect_data.get('experience', [])
                 if experiences and len(experiences) > 0:
                     current_exp = experiences[0]
                     role = current_exp.get('title', '')
                     company = current_exp.get('company', '')
                     if role and company:
-                        profile_elements.append(f"Current Role: {role} at {company}")
-            if profile_data.get('education'):
-                edu = profile_data.get('education', [])
-                if edu and len(edu) > 0:
-                    school = edu[0].get('school', '')
-                    degree = edu[0].get('degree', '')
-                    if school:
-                        profile_elements.append(f"Education: {school}")
+                        prospect_info.append(f"Current Position: {role} at {company}")
+                        # Get industry/specialty from role
+                        if any(word in role.lower() for word in ['data', 'ai', 'machine', 'software', 'tech']):
+                            prospect_info.append(f"Field: Technology/Data")
+                        elif any(word in role.lower() for word in ['sales', 'business', 'marketing']):
+                            prospect_info.append(f"Field: Business Development")
+                        elif any(word in role.lower() for word in ['finance', 'accounting', 'banking']):
+                            prospect_info.append(f"Field: Finance")
         
-        profile_summary = "\n".join(profile_elements)
+        prospect_summary = "\n".join(prospect_info)
         
     except Exception as e:
-        profile_summary = json.dumps(profile_data, indent=2)[:1500]
-
-    # Build sender context for the AI
-    sender_context = ""
-    if sender_info.get('company'):
-        sender_context += f"I work at {sender_info['company']}. "
-    if sender_info.get('role'):
-        sender_context += f"My role is {sender_info['role']}. "
-    if sender_info.get('expertise'):
-        sender_context += f"I focus on {sender_info['expertise']}. "
-
+        prospect_summary = json.dumps(prospect_data, indent=2)[:1500]
+    
+    # Extract sender information
+    sender_info = analyze_sender_profile(sender_data)
+    sender_name = sender_info['name'].split()[0] if sender_info['name'] else "Joseph"
+    
+    # Prepare sender context
+    sender_context = f"Sender Name: {sender_info['name']}"
+    if sender_info['current_role']:
+        sender_context += f"\nSender Role: {sender_info['current_role']}"
+    if sender_info['current_company']:
+        sender_context += f"\nSender Company: {sender_info['current_company']}"
+    if sender_info['expertise']:
+        sender_context += f"\nSender Expertise: {sender_info['expertise']}"
+    if sender_info['summary']:
+        sender_context += f"\nSender Summary: {sender_info['summary'][:300]}"
+    
+    # CRITICAL: 3-line message structure
     if user_instructions and previous_message:
         # Refinement mode
-        prompt = f'''Generate a refined LinkedIn connection message for {prospect_name}.
+        prompt = f'''Generate a refined LinkedIn connection message following this EXACT 3-line structure:
 
-PROFILE CONTEXT:
-{profile_summary}
+1st line: Something specific about the PROSPECT (their role, achievement, or background)
+2nd line: Your VALUE/INTENTION related to their field (based on your background)
+3rd line: Polite connection request
 
-SENDER CONTEXT:
+PROSPECT INFORMATION:
+{prospect_summary}
+
+YOUR (SENDER) INFORMATION:
 {sender_context}
 
 ORIGINAL MESSAGE TO REFINE:
@@ -232,39 +306,50 @@ ORIGINAL MESSAGE TO REFINE:
 REFINEMENT INSTRUCTIONS:
 {user_instructions}
 
-CRITICAL GUIDELINES:
-1. Start with "Hi [First Name],"
-2. Reference ONE specific element from their profile (current role, education, or headline)
-3. Mention YOUR value/interest based on sender context
-4. End with "Best, [Your Name]"
-5. Keep under 250 characters
-6. DO NOT copy phrases from any example messages
-7. Make it unique and personalized to THIS person
+CRITICAL REQUIREMENTS:
+1. Use EXACTLY 3 lines, each line separate
+2. Line 1: Start with "Hi [First Name]," then mention something specific about prospect
+3. Line 2: Your value proposition/intention (professional only)
+4. Line 3: Connection request like "Would be glad to connect."
+5. End with "Best, [Your First Name]"
+6. TOTAL CHARACTERS: Under 275
+7. NO flirty, romantic, or informal language - strictly professional
+8. NO generic phrases like "came across your profile"
 
-Generate only the message:'''
+Generate ONLY the refined message:'''
     else:
-        # New generation with anti-hallucination measures
-        prompt = f'''Generate a personalized LinkedIn connection message for {prospect_name}.
+        # New generation mode
+        prompt = f'''Generate a LinkedIn connection message following this EXACT 3-line structure:
 
-PROFILE CONTEXT:
-{profile_summary}
+1st line: Something specific about the PROSPECT (their role, achievement, or background)
+2nd line: Your VALUE/INTENTION related to their field (based on your background)
+3rd line: Polite connection request
 
-YOUR INFORMATION (SENDER):
+PROSPECT INFORMATION:
+{prospect_summary}
+
+YOUR (SENDER) INFORMATION:
 {sender_context}
 
-GUIDELINES FOR CREATION:
-1. Start with "Hi {prospect_name},"
-2. Reference ONE specific element from their profile (current role at company, education, or headline)
-3. Connect it to your background/field mentioned above
-4. End with "Best, {sender_info['name']}"
-5. Keep entire message under 250 characters
-6. MUST be unique - do not copy any example structures
-7. Use natural, conversational tone
-8. Focus on mutual professional interests
+CRITICAL REQUIREMENTS:
+1. Use EXACTLY 3 lines, each line separate
+2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their profile
+3. Line 2: Connect your background/expertise to their field
+4. Line 3: Connection request like "Would be glad to connect."
+5. End with "Best, {sender_name}"
+6. TOTAL CHARACTERS: Under 275
+7. NO flirty, romantic, or informal language - strictly professional
+8. NO generic phrases like "came across your profile"
+9. Focus on mutual professional interests
 
-IMPORTANT: Only use information from the profile. Do not invent details.
+Examples of proper structure:
+"Hi David,
+Your FP&A leadership at Planet shows rare execution depth.
+I focus on automating financial workflows to improve forecasting.
+Would be glad to connect.
+Best, Joseph"
 
-Generate only the message:'''
+Generate ONLY the message with exactly 3 content lines plus greeting and signature:'''
     
     try:
         headers = {
@@ -272,19 +357,28 @@ Generate only the message:'''
             "Content-Type": "application/json"
         }
         
-        # Generate initial message
         payload = {
             "model": "llama-3.1-8b-instant",
             "messages": [
                 {
                     "role": "system", 
-                    "content": f'''You are a professional relationship builder. Create unique, personalized LinkedIn messages.
-                    NEVER copy from examples. Always base messages on profile data only.'''
+                    "content": f'''You are a professional LinkedIn connection message writer.
+                    You MUST follow this exact 3-line structure:
+                    1. Greeting + something specific about the prospect
+                    2. Your value/intention related to their field
+                    3. Polite connection request
+                    
+                    Rules:
+                    - No flirty or romantic language
+                    - No informal tone
+                    - No generic phrases
+                    - Keep it professional and concise
+                    - Always end with "Best, [First Name]"'''
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.8,
-            "max_tokens": 300
+            "temperature": 0.7,
+            "max_tokens": 350
         }
         
         response = requests.post(
@@ -297,41 +391,59 @@ Generate only the message:'''
         if response.status_code == 200:
             message = response.json()["choices"][0]["message"]["content"].strip()
             
-            # Clean and format message
+            # Clean and validate message
             message = message.replace('"', '').replace("''", "'").strip()
             
             # Ensure proper greeting
             if not message.lower().startswith(f"hi {prospect_name.lower()},"):
-                if message.lower().startswith("hi ") and "," in message:
-                    pass
-                else:
-                    message = f"Hi {prospect_name},\n{message}"
+                # Add proper greeting
+                message = f"Hi {prospect_name},\n{message}"
             
             # Ensure proper signature
-            if not message.strip().endswith(f"Best, {sender_info['name']}"):
-                message = f"{message.rstrip()}\nBest, {sender_info['name']}"
+            if not message.strip().endswith(f"Best, {sender_name}"):
+                message = f"{message.rstrip()}\nBest, {sender_name}"
             
-            # Verify message doesn't copy examples
-            forbidden_patterns = [
-                "LeadStrategus", "Planet", "Adam", "Heather", "Gabriel",
-                "FP&A leadership", "renovation lending", "recruiting",
-                "mortgage lending", "retention and analytics"
+            # Validate 3-line structure (excluding greeting and signature)
+            lines = message.split('\n')
+            content_lines = [line for line in lines if line and not line.startswith('Hi ') and not line.startswith('Best, ')]
+            
+            if len(content_lines) != 3:
+                # Try to fix structure
+                if len(content_lines) > 3:
+                    # Take first 3 content lines
+                    content_lines = content_lines[:3]
+                elif len(content_lines) < 3:
+                    # Add missing lines
+                    while len(content_lines) < 3:
+                        content_lines.append("Would be glad to connect.")
+                
+                # Reconstruct message
+                message = f"Hi {prospect_name},\n" + "\n".join(content_lines) + f"\nBest, {sender_name}"
+            
+            # Check for forbidden content
+            forbidden_phrases = [
+                "beautiful", "attractive", "handsome", "cute", "sexy",
+                "date", "dinner", "coffee date", "romantic", "love",
+                "hot", "gorgeous", "stunning", "hey baby", "hey sexy",
+                "sweetheart", "darling", "honey", "babe", "dear"
             ]
             
-            for pattern in forbidden_patterns:
-                if pattern.lower() in message.lower():
+            for phrase in forbidden_phrases:
+                if phrase.lower() in message.lower():
+                    # Regenerate with stricter filter
                     strict_prompt = f'''Regenerate message for {prospect_name}. 
-                    Do NOT use any example phrases. 
-                    Profile: {profile_summary[:300]}
-                    Create completely original message.'''
+                    REMOVE ALL romantic/flirty language.
+                    Keep strictly professional.
+                    Profile: {prospect_summary[:300]}
+                    Your info: {sender_context[:300]}'''
                     
                     strict_payload = {
                         "model": "llama-3.1-8b-instant",
                         "messages": [
-                            {"role": "system", "content": "Create completely original message. No example copying."},
+                            {"role": "system", "content": "STRICTLY PROFESSIONAL ONLY. No flirty language. 3-line structure."},
                             {"role": "user", "content": strict_prompt}
                         ],
-                        "temperature": 0.9,
+                        "temperature": 0.5,
                         "max_tokens": 250
                     }
                     
@@ -345,24 +457,37 @@ Generate only the message:'''
                     if strict_response.status_code == 200:
                         message = strict_response.json()["choices"][0]["message"]["content"].strip()
                         message = f"Hi {prospect_name},\n{message}"
-                        if not message.endswith(f"Best, {sender_info['name']}"):
-                            message = f"{message}\nBest, {sender_info['name']}"
+                        if not message.endswith(f"Best, {sender_name}"):
+                            message = f"{message}\nBest, {sender_name}"
                     break
             
             # Final length check
             if len(message) > 275:
                 lines = message.split('\n')
-                if len(lines) >= 3:
-                    message = f"{lines[0]}\n{lines[1][:150]}\n{lines[-1]}"
-                message = message[:275]
+                if len(lines) >= 5:  # Greeting + 3 content + signature
+                    # Shorten middle lines if needed
+                    shortened = [lines[0]]
+                    for i in range(1, 4):  # Content lines
+                        if i < len(lines):
+                            if len(lines[i]) > 100:
+                                shortened.append(lines[i][:97] + '...')
+                            else:
+                                shortened.append(lines[i])
+                    shortened.append(lines[-1])
+                    message = '\n'.join(shortened)
+                
+                if len(message) > 275:
+                    message = message[:272] + '...'
             
             return message
             
         else:
-            return f"Hi {prospect_name},\nI noticed your professional background and wanted to connect regarding mutual interests in your field.\nBest, {sender_info['name']}"
+            # Safe fallback with proper structure
+            return f"Hi {prospect_name},\nYour professional background in your field is impressive.\nI work on operational improvements in similar areas.\nWould be glad to connect.\nBest, {sender_name}"
             
     except Exception as e:
-        return f"Hi {prospect_name},\nYour experience looks impressive. Would be great to connect and exchange insights.\nBest, {sender_info['name']}"
+        # Professional fallback
+        return f"Hi {prospect_name},\nYour experience in your industry caught my attention.\nI focus on business improvements in related fields.\nWould be good to connect.\nBest, {sender_name}"
 
 # ========== STREAMLIT APPLICATION ==========
 
@@ -373,7 +498,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Modern 3D Color Theory CSS with Enhanced Input Effects ---
+# --- Modern 3D Color Theory CSS ---
 modern_3d_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
@@ -384,36 +509,29 @@ modern_3d_css = """
         min-height: 100vh;
     }
     
-    /* 3D Perspective Container */
-    .perspective-container {
-        perspective: 1000px;
-        transform-style: preserve-3d;
-    }
-    
-    /* Main 3D Card */
-    .main-3d-card {
+    /* Main Container */
+    .main-container {
         background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
         backdrop-filter: blur(20px);
         border-radius: 32px;
-        padding: 50px;
-        margin: 30px;
+        padding: 40px;
+        margin: 20px;
         border: 1px solid rgba(0, 180, 216, 0.1);
         box-shadow: 
             0 50px 100px rgba(0, 180, 216, 0.1),
             inset 0 1px 0 rgba(255, 255, 255, 0.1),
             0 0 100px rgba(0, 180, 216, 0.05);
-        transform: rotateY(-2deg) rotateX(1deg);
         animation: float3d 6s ease-in-out infinite;
         position: relative;
         overflow: hidden;
     }
     
     @keyframes float3d {
-        0%, 100% { transform: rotateY(-2deg) rotateX(1deg) translateY(0); }
-        50% { transform: rotateY(-2deg) rotateX(1deg) translateY(-10px); }
+        0%, 100% { transform: translateY(0) rotateX(1deg); }
+        50% { transform: translateY(-10px) rotateX(1deg); }
     }
     
-    .main-3d-card::before {
+    .main-container::before {
         content: '';
         position: absolute;
         top: 0;
@@ -424,23 +542,11 @@ modern_3d_css = """
         transition: 0.5s;
     }
     
-    .main-3d-card:hover::before {
+    .main-container:hover::before {
         left: 100%;
     }
     
-    /* Neural Network Background */
-    .neural-network {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: -1;
-        opacity: 0.3;
-    }
-    
-    /* Gradient Text Effects */
+    /* Gradient Text */
     .gradient-text-primary {
         background: linear-gradient(135deg, #00b4d8 0%, #00ffd0 50%, #0077b6 100%);
         -webkit-background-clip: text;
@@ -455,71 +561,58 @@ modern_3d_css = """
         100% { background-position: 100% 50%; }
     }
     
-    /* Enhanced 3D Input Fields with Animations */
-    .enhanced-input-3d {
-        background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
-        border: 2px solid rgba(0, 180, 216, 0.15);
+    /* 3D Input Fields */
+    .input-3d {
+        background: rgba(255, 255, 255, 0.03);
+        border: 2px solid rgba(0, 180, 216, 0.2);
         border-radius: 16px;
-        padding: 20px 24px;
+        padding: 18px 24px;
         font-family: 'Space Grotesk', sans-serif;
         font-size: 1rem;
         color: #e6f7ff;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        backdrop-filter: blur(15px);
-        transform-style: preserve-3d;
-        position: relative;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
         box-shadow: 
             inset 0 2px 4px rgba(0, 0, 0, 0.1),
-            0 8px 32px rgba(0, 180, 216, 0.1);
+            0 4px 20px rgba(0, 180, 216, 0.1);
     }
     
-    .enhanced-input-3d:focus {
-        background: linear-gradient(145deg, rgba(0, 180, 216, 0.05), rgba(0, 255, 208, 0.03));
+    .input-3d:focus {
+        background: rgba(255, 255, 255, 0.05);
         border-color: #00b4d8;
         box-shadow: 
             0 0 0 4px rgba(0, 180, 216, 0.15),
-            inset 0 2px 8px rgba(0, 180, 216, 0.1),
-            0 12px 40px rgba(0, 180, 216, 0.2);
-        transform: translateY(-3px) scale(1.02);
+            inset 0 2px 8px rgba(0, 180, 216, 0.1);
         outline: none;
+        animation: inputGlow 2s ease-in-out infinite;
     }
     
-    .enhanced-input-3d::placeholder {
-        color: rgba(136, 146, 176, 0.7);
-        font-weight: 400;
-    }
-    
-    /* Input glow animation on focus */
     @keyframes inputGlow {
         0%, 100% { box-shadow: 0 0 0 4px rgba(0, 180, 216, 0.15); }
         50% { box-shadow: 0 0 0 6px rgba(0, 180, 216, 0.25); }
     }
     
-    .enhanced-input-3d:focus {
-        animation: inputGlow 2s ease-in-out infinite;
-    }
-    
-    /* 3D Cards for Configuration */
-    .config-card-3d {
-        background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
-        border-radius: 20px;
+    /* 3D Cards */
+    .card-3d {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 24px;
         padding: 25px;
         margin: 15px 0;
         border: 1px solid rgba(0, 180, 216, 0.1);
         transform-style: preserve-3d;
         transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        backdrop-filter: blur(15px);
+        backdrop-filter: blur(10px);
         box-shadow: 
             0 20px 60px rgba(0, 0, 0, 0.2),
-            inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
     
-    .config-card-3d:hover {
-        transform: translateY(-5px) rotateX(2deg);
+    .card-3d:hover {
+        transform: translateY(-5px);
         border-color: rgba(0, 180, 216, 0.3);
         box-shadow: 
             0 30px 80px rgba(0, 180, 216, 0.15),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            inset 0 1px 0 rgba(255, 255, 255, 0.15);
     }
     
     /* Status Indicators */
@@ -550,75 +643,60 @@ modern_3d_css = """
         }
     }
     
-    /* Message Display */
-    .message-display-3d {
+    /* Message Structure Display */
+    .message-structure {
         background: linear-gradient(135deg, rgba(0, 180, 216, 0.05), rgba(0, 255, 208, 0.05));
         border-left: 4px solid #00b4d8;
-        padding: 30px;
+        padding: 25px;
         border-radius: 20px;
         margin: 20px 0;
         font-family: 'Inter', sans-serif;
         line-height: 1.8;
         color: #e6f7ff;
-        animation: slideIn3d 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        transform-style: preserve-3d;
-        transform: rotateX(0.5deg);
+        animation: slideIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     
-    @keyframes slideIn3d {
+    @keyframes slideIn {
         from {
             opacity: 0;
-            transform: rotateX(10deg) translateY(20px);
+            transform: translateY(20px);
         }
         to {
             opacity: 1;
-            transform: rotateX(0.5deg) translateY(0);
+            transform: translateY(0);
         }
     }
     
-    /* Save Button Animation */
-    .save-button {
-        background: linear-gradient(135deg, #00b4d8 0%, #0077b6 100%);
+    /* Structure Guide */
+    .structure-guide {
+        background: rgba(255, 255, 255, 0.02);
+        border: 1px dashed rgba(0, 180, 216, 0.3);
+        border-radius: 16px;
+        padding: 20px;
+        margin: 15px 0;
+    }
+    
+    .structure-line {
+        display: flex;
+        align-items: center;
+        margin: 8px 0;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(0, 180, 216, 0.05);
+    }
+    
+    .line-number {
+        width: 30px;
+        height: 30px;
+        background: linear-gradient(135deg, #00b4d8, #0077b6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         color: white;
-        border: none;
-        padding: 14px 28px;
-        border-radius: 14px;
-        font-family: 'Space Grotesk', sans-serif;
         font-weight: 600;
-        font-size: 0.95rem;
-        cursor: pointer;
-        transform-style: preserve-3d;
-        transition: all 0.3s ease;
-        box-shadow: 
-            0 8px 25px rgba(0, 180, 216, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.2);
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .save-button:hover {
-        transform: translateY(-2px) scale(1.03);
-        box-shadow: 
-            0 12px 35px rgba(0, 180, 216, 0.4),
-            inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    }
-    
-    .save-button:active {
-        transform: translateY(0);
-        box-shadow: 
-            0 5px 20px rgba(0, 180, 216, 0.3),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    }
-    
-    /* Success Animation */
-    @keyframes successPulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-        100% { transform: scale(1); }
-    }
-    
-    .success-animation {
-        animation: successPulse 0.5s ease-in-out;
+        margin-right: 15px;
+        box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);
     }
     
     /* Scrollbar */
@@ -639,6 +717,37 @@ modern_3d_css = """
     ::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(135deg, #00ffd0, #00b4d8);
     }
+    
+    /* Button Styling */
+    .stButton > button {
+        background: linear-gradient(135deg, #00b4d8 0%, #0077b6 100%);
+        color: white;
+        border: none;
+        padding: 14px 28px;
+        border-radius: 14px;
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 
+            0 8px 25px rgba(0, 180, 216, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 
+            0 12px 35px rgba(0, 180, 216, 0.4),
+            inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0);
+        box-shadow: 
+            0 5px 20px rgba(0, 180, 216, 0.3),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
 </style>
 
 <!-- Font Awesome Icons -->
@@ -647,7 +756,7 @@ modern_3d_css = """
 
 st.markdown(modern_3d_css, unsafe_allow_html=True)
 
-# --- Initialize Session State with Sender Info ---
+# --- Initialize Session State ---
 if 'profile_data' not in st.session_state:
     st.session_state.profile_data = None
 if 'research_brief' not in st.session_state:
@@ -657,297 +766,219 @@ if 'generated_messages' not in st.session_state:
 if 'current_message_index' not in st.session_state:
     st.session_state.current_message_index = -1
 if 'processing_status' not in st.session_state:
-    st.session_state.processing_status = "System Ready"
+    st.session_state.processing_status = "Ready"
 if 'sender_info' not in st.session_state:
-    st.session_state.sender_info = {
-        'name': '',
-        'company': '',
-        'role': '',
-        'expertise': '',
-        'configured': False
-    }
+    st.session_state.sender_info = None
+if 'sender_data' not in st.session_state:
+    st.session_state.sender_data = None
 if 'message_instructions' not in st.session_state:
     st.session_state.message_instructions = ""
 if 'regenerate_mode' not in st.session_state:
     st.session_state.regenerate_mode = False
-if 'show_success_animation' not in st.session_state:
-    st.session_state.show_success_animation = False
+if 'sender_processing' not in st.session_state:
+    st.session_state.sender_processing = False
 
-# --- Main 3D Container ---
-st.markdown('<div class="perspective-container">', unsafe_allow_html=True)
-st.markdown('<div class="main-3d-card">', unsafe_allow_html=True)
+# --- Main Container ---
+st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # --- Header Section ---
 col1, col2 = st.columns([4, 1])
 with col1:
     st.markdown('<h1 class="gradient-text-primary" style="font-size: 3.5rem; margin-bottom: 10px;">LINZY</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="color: #8892b0; font-size: 1.2rem; margin-bottom: 40px;">Advanced AI-Powered Prospect Intelligence Platform</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: #8892b0; font-size: 1.2rem; margin-bottom: 40px;">AI-Powered LinkedIn Message Generator</p>', unsafe_allow_html=True)
 with col2:
+    sender_name = "Not Set"
+    if st.session_state.sender_info:
+        sender_name = st.session_state.sender_info.get('name', 'Not Set').split()[0][:15]
+    
     st.markdown(f'''
-    <div class="config-card-3d" style="text-align: center; padding: 20px;">
+    <div class="card-3d" style="text-align: center; padding: 20px;">
         <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 10px;">
             <span class="status-orb {'active' if st.session_state.profile_data else ''}"></span>
             <span style="color: #e6f7ff; font-weight: 600;">{st.session_state.processing_status}</span>
         </div>
         <div style="color: #8892b0; font-size: 0.9rem;">
-            <div><i class="fas fa-user" style="margin-right: 8px;"></i> Sender: {st.session_state.sender_info['name'] or 'Not Set'}</div>
+            <div><i class="fas fa-user" style="margin-right: 8px;"></i> Sender: {sender_name}</div>
             <div><i class="fas fa-message" style="margin-right: 8px;"></i> Messages: {len(st.session_state.generated_messages)}</div>
             <div><i class="fas fa-clock" style="margin-right: 8px;"></i> {datetime.now().strftime('%H:%M:%S')}</div>
         </div>
     </div>
     ''', unsafe_allow_html=True)
 
-# --- SENDER CONFIGURATION SECTION ---
+# --- Message Structure Guide ---
 st.markdown("---")
-st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-user-cog" style="margin-right: 12px;"></i>Sender Configuration</h3>', unsafe_allow_html=True)
-st.markdown('<p style="color: #8892b0; margin-bottom: 25px;">Configure your sender information for personalized message generation</p>', unsafe_allow_html=True)
+st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 20px;"><i class="fas fa-project-diagram" style="margin-right: 12px;"></i>Message Structure</h3>', unsafe_allow_html=True)
 
-# Sender Configuration Form
-with st.form("sender_config_form"):
-    config_col1, config_col2 = st.columns(2)
-    
-    with config_col1:
-        sender_name = st.text_input(
-            "Your Full Name *",
-            value=st.session_state.sender_info.get('name', ''),
-            placeholder="Enter your name",
-            key="sender_name_input"
-        )
-        
-        sender_company = st.text_input(
-            "Your Company",
-            value=st.session_state.sender_info.get('company', ''),
-            placeholder="Company name",
-            key="sender_company_input"
-        )
-    
-    with config_col2:
-        sender_role = st.text_input(
-            "Your Role",
-            value=st.session_state.sender_info.get('role', ''),
-            placeholder="e.g., Sales Director, Product Manager",
-            key="sender_role_input"
-        )
-        
-        sender_expertise = st.text_input(
-            "Your Expertise/Industry Focus",
-            value=st.session_state.sender_info.get('expertise', ''),
-            placeholder="e.g., SaaS, AI, Financial Services",
-            key="sender_expertise_input"
-        )
-    
-    # Submit button
-    col_submit, col_clear = st.columns([2, 1])
-    
-    with col_submit:
-        config_submitted = st.form_submit_button(
-            "💾 Save Sender Configuration",
-            use_container_width=True
-        )
-    
-    with col_clear:
-        if st.form_submit_button(
-            "🗑️ Clear Configuration",
-            use_container_width=True,
-            type="secondary"
-        ):
-            st.session_state.sender_info = {
-                'name': '',
-                'company': '',
-                'role': '',
-                'expertise': '',
-                'configured': False
-            }
-            st.session_state.show_success_animation = False
-            st.rerun()
-
-# Handle configuration submission
-if config_submitted:
-    if sender_name.strip():
-        st.session_state.sender_info = {
-            'name': sender_name.strip(),
-            'company': sender_company.strip(),
-            'role': sender_role.strip(),
-            'expertise': sender_expertise.strip(),
-            'configured': True
-        }
-        st.session_state.show_success_animation = True
-        st.success("✅ Sender configuration saved successfully!")
-        
-        # Add animation effect
-        st.markdown("""
-        <script>
-        setTimeout(() => {
-            const elements = document.querySelectorAll('.config-card-3d');
-            elements.forEach(el => {
-                el.classList.add('success-animation');
-                setTimeout(() => el.classList.remove('success-animation'), 500);
-            });
-        }, 100);
-        </script>
-        """, unsafe_allow_html=True)
-    else:
-        st.error("❌ Please enter at least your name to save configuration.")
-
-# Display current configuration
-if st.session_state.sender_info['configured']:
-    st.markdown(f'''
-    <div class="config-card-3d" style="margin-top: 20px;">
-        <h4 style="color: #e6f7ff; margin-bottom: 15px; display: flex; align-items: center;">
-            <i class="fas fa-check-circle" style="color: #00ffd0; margin-right: 10px;"></i>
-            Current Configuration
-        </h4>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
-            <div>
-                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Name</div>
-                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['name']}</div>
-            </div>
-            <div>
-                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Company</div>
-                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['company'] or 'Not specified'}</div>
-            </div>
-            <div>
-                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Role</div>
-                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['role'] or 'Not specified'}</div>
-            </div>
-            <div>
-                <div style="color: #8892b0; font-size: 0.85rem; margin-bottom: 5px;">Expertise</div>
-                <div style="color: #e6f7ff; font-weight: 500;">{st.session_state.sender_info['expertise'] or 'Not specified'}</div>
-            </div>
+st.markdown('''
+<div class="structure-guide">
+    <div class="structure-line">
+        <div class="line-number">1</div>
+        <div>
+            <strong style="color: #00ffd0;">About the Prospect</strong>
+            <div style="color: #8892b0; font-size: 0.9rem;">Specific mention of their role, achievement, or background</div>
         </div>
     </div>
-    ''', unsafe_allow_html=True)
+    <div class="structure-line">
+        <div class="line-number">2</div>
+        <div>
+            <strong style="color: #00b4d8;">Your Value/Intention</strong>
+            <div style="color: #8892b0; font-size: 0.9rem;">How your expertise relates to their field</div>
+        </div>
+    </div>
+    <div class="structure-line">
+        <div class="line-number">3</div>
+        <div>
+            <strong style="color: #c8b6ff;">Connection Request</strong>
+            <div style="color: #8892b0; font-size: 0.9rem;">Polite request to connect professionally</div>
+        </div>
+    </div>
+</div>
+''', unsafe_allow_html=True)
 
+# --- Sender Configuration Section ---
 st.markdown("---")
+st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-user-tie" style="margin-right: 12px;"></i>Your Information</h3>', unsafe_allow_html=True)
 
-# --- Profile Analysis Section ---
-st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 20px;"><i class="fas fa-search" style="margin-right: 12px;"></i>Profile Analysis</h3>', unsafe_allow_html=True)
-st.markdown('<p style="color: #8892b0; margin-bottom: 30px;">Enter LinkedIn profile URL for AI-powered analysis and message generation</p>', unsafe_allow_html=True)
+sender_col1, sender_col2 = st.columns([2, 1])
 
-input_col1, input_col2 = st.columns([3, 1])
-
-with input_col1:
-    linkedin_url = st.text_input(
-        "",
-        placeholder="https://www.linkedin.com/in/username",
-        label_visibility="collapsed"
+with sender_col1:
+    sender_linkedin_url = st.text_input(
+        "Your LinkedIn Profile URL",
+        placeholder="https://linkedin.com/in/yourprofile",
+        help="Paste your LinkedIn URL to help AI understand your background"
     )
 
-with input_col2:
+with sender_col2:
     st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
-    analyze_clicked = st.button(
-        "Initiate Analysis", 
+    analyze_sender_clicked = st.button(
+        "Analyze My Profile",
         use_container_width=True,
-        key="analyze_btn",
-        disabled=not st.session_state.sender_info['configured']
+        key="analyze_sender"
     )
 
-if not st.session_state.sender_info['configured']:
-    st.warning("⚠️ Please configure your sender information above before analyzing profiles.")
-
-# Custom button styling
-st.markdown("""
-<style>
-div[data-testid="stButton"] > button[kind="secondary"] {
-    background: linear-gradient(135deg, #00b4d8 0%, #0077b6 100%);
-    color: white;
-    border: none;
-    padding: 18px 36px;
-    border-radius: 16px;
-    font-family: 'Space Grotesk', sans-serif;
-    font-weight: 600;
-    font-size: 1rem;
-    cursor: pointer;
-    transform-style: preserve-3d;
-    transition: all 0.3s ease;
-    box-shadow: 
-        0 10px 30px rgba(0, 180, 216, 0.4),
-        0 5px 15px rgba(0, 180, 216, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    position: relative;
-    overflow: hidden;
-    letter-spacing: 0.5px;
-    width: 100%;
-}
-
-div[data-testid="stButton"] > button[kind="secondary"]:hover:not(:disabled) {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 
-        0 15px 40px rgba(0, 180, 216, 0.6),
-        0 8px 25px rgba(0, 180, 216, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.4);
-}
-
-div[data-testid="stButton"] > button[kind="secondary"]:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background: linear-gradient(135deg, #666 0%, #444 100%);
-}
-
-div[data-testid="stButton"] > button[kind="secondary"]::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: 0.5s;
-}
-
-div[data-testid="stButton"] > button[kind="secondary"]:hover::before {
-    left: 100%;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# --- Processing Logic ---
-if analyze_clicked and linkedin_url and st.session_state.sender_info['configured']:
-    with st.spinner(""):
-        if not apify_api_key or not groq_api_key:
-            st.error("API configuration required. Please verify secret keys.")
-        else:
-            st.session_state.processing_status = "Analyzing Profile"
-            
-            username = extract_username_from_url(linkedin_url)
+# Handle sender profile analysis
+if analyze_sender_clicked and sender_linkedin_url:
+    if not apify_api_key:
+        st.error("API key configuration required.")
+    else:
+        st.session_state.sender_processing = True
+        with st.spinner("Analyzing your profile..."):
+            username = extract_username_from_url(sender_linkedin_url)
             run_info = start_apify_run(username, apify_api_key)
             
             if run_info:
-                profile_data = poll_apify_run_with_status(
+                sender_data = poll_apify_run_with_status(
                     run_info["run_id"],
                     run_info["dataset_id"],
                     apify_api_key
                 )
                 
-                if profile_data:
-                    st.session_state.profile_data = profile_data
-                    st.session_state.processing_status = "Generating Intelligence"
+                if sender_data:
+                    st.session_state.sender_data = sender_data
+                    st.session_state.sender_info = analyze_sender_profile(sender_data)
+                    st.success(" Your profile analyzed successfully!")
+                    st.session_state.sender_processing = False
                     
-                    research_brief = generate_research_brief(profile_data, groq_api_key)
-                    st.session_state.research_brief = research_brief
-                    st.session_state.processing_status = "Analysis Complete"
-                    
-                    st.success("Profile analysis successfully completed")
-                    
-                    st.session_state.generated_messages = []
-                    st.session_state.current_message_index = -1
+                    # Display sender info
+                    with st.expander(" Your Profile Summary", expanded=True):
+                        if st.session_state.sender_info:
+                            info = st.session_state.sender_info
+                            st.markdown(f"""
+                            **Name:** {info.get('name', 'N/A')}
+                            **Current Role:** {info.get('current_role', 'N/A')}
+                            **Company:** {info.get('current_company', 'N/A')}
+                            **Expertise:** {info.get('expertise', 'N/A')}
+                            """)
                 else:
-                    st.session_state.processing_status = "Analysis Failed"
-                    st.error("Unable to retrieve profile data")
+                    st.error("Failed to analyze your profile.")
+                    st.session_state.sender_processing = False
+
+# Display current sender info if available
+if st.session_state.sender_info and not st.session_state.sender_processing:
+    with st.expander(" Your Current Profile Info", expanded=False):
+        info = st.session_state.sender_info
+        st.markdown(f"""
+        <div class="card-3d">
+            <div style="color: #e6f7ff; margin-bottom: 15px;">
+                <strong>Name:</strong> {info.get('name', 'N/A')}<br>
+                <strong>Current Role:</strong> {info.get('current_role', 'N/A')}<br>
+                <strong>Company:</strong> {info.get('current_company', 'N/A')}<br>
+                <strong>Expertise:</strong> {info.get('expertise', 'N/A')}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- Prospect Analysis Section ---
+st.markdown("---")
+st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 20px;"><i class="fas fa-search" style="margin-right: 12px;"></i>Prospect Analysis</h3>', unsafe_allow_html=True)
+
+prospect_col1, prospect_col2 = st.columns([3, 1])
+
+with prospect_col1:
+    prospect_linkedin_url = st.text_input(
+        "Prospect's LinkedIn Profile URL",
+        placeholder="https://linkedin.com/in/prospectprofile",
+        help="Paste the prospect's LinkedIn URL to analyze"
+    )
+
+with prospect_col2:
+    st.markdown("<div style='height: 28px'></div>", unsafe_allow_html=True)
+    analyze_prospect_clicked = st.button(
+        "Analyze Prospect",
+        use_container_width=True,
+        key="analyze_prospect",
+        disabled=not st.session_state.sender_info
+    )
+
+if not st.session_state.sender_info:
+    st.warning(" Please analyze your profile first to generate personalized messages.")
+
+# Handle prospect analysis
+if analyze_prospect_clicked and prospect_linkedin_url and st.session_state.sender_info:
+    if not apify_api_key or not groq_api_key:
+        st.error("API configuration required.")
+    else:
+        st.session_state.processing_status = "Analyzing Prospect"
+        
+        username = extract_username_from_url(prospect_linkedin_url)
+        run_info = start_apify_run(username, apify_api_key)
+        
+        if run_info:
+            profile_data = poll_apify_run_with_status(
+                run_info["run_id"],
+                run_info["dataset_id"],
+                apify_api_key
+            )
+            
+            if profile_data:
+                st.session_state.profile_data = profile_data
+                st.session_state.processing_status = "Generating Research"
+                
+                research_brief = generate_research_brief(profile_data, groq_api_key)
+                st.session_state.research_brief = research_brief
+                st.session_state.processing_status = "Ready"
+                
+                st.success(" Prospect analysis complete!")
+                
+                st.session_state.generated_messages = []
+                st.session_state.current_message_index = -1
+            else:
+                st.session_state.processing_status = "Error"
+                st.error("Failed to analyze prospect profile.")
 
 # --- Results Display ---
-if st.session_state.profile_data and st.session_state.research_brief:
+if st.session_state.profile_data and st.session_state.research_brief and st.session_state.sender_info:
     st.markdown("---")
     
     # Tab Interface
     tab1, tab2, tab3 = st.tabs([
         "Message Generation", 
-        "Research Intelligence", 
+        "Research Brief", 
         "Profile Data"
     ])
     
     with tab1:
-        st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-robot" style="margin-right: 12px;"></i>AI Message Generation</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-robot" style="margin-right: 12px;"></i>Generate Message</h3>', unsafe_allow_html=True)
         
         # Generate new message
         col_gen1, col_gen2 = st.columns([2, 1])
@@ -958,11 +989,11 @@ if st.session_state.profile_data and st.session_state.research_brief:
                 use_container_width=True,
                 key="generate_message"
             ):
-                with st.spinner("Creating personalized message..."):
+                with st.spinner("Creating 3-line message..."):
                     new_message = analyze_and_generate_message(
                         st.session_state.profile_data,
-                        groq_api_key,
-                        st.session_state.sender_info
+                        st.session_state.sender_data,
+                        groq_api_key
                     )
                     
                     if new_message:
@@ -984,8 +1015,24 @@ if st.session_state.profile_data and st.session_state.research_brief:
         if len(st.session_state.generated_messages) > 0:
             current_msg = st.session_state.generated_messages[st.session_state.current_message_index]
             
+            # Analyze message structure
+            lines = current_msg.split('\n')
+            structure_analysis = []
+            for i, line in enumerate(lines):
+                if i == 0 and line.startswith('Hi '):
+                    structure_analysis.append(f" <strong>Greeting:</strong> {line}")
+                elif i == len(lines) - 1 and line.startswith('Best, '):
+                    structure_analysis.append(f"<strong>Signature:</strong> {line}")
+                else:
+                    if i == 1:
+                        structure_analysis.append(f" <strong>Line 1 (About Prospect):</strong> {line}")
+                    elif i == 2:
+                        structure_analysis.append(f" <strong>Line 2 (Your Value):</strong> {line}")
+                    elif i == 3:
+                        structure_analysis.append(f" <strong>Line 3 (Connection):</strong> {line}")
+            
             st.markdown(f'''
-            <div class="message-display-3d">
+            <div class="message-structure">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
                     <div>
                         <h4 style="color: #e6f7ff; margin: 0;"><i class="fas fa-envelope" style="margin-right: 10px;"></i>Generated Message</h4>
@@ -994,13 +1041,21 @@ if st.session_state.profile_data and st.session_state.research_brief:
                         </p>
                     </div>
                     <div style="background: linear-gradient(135deg, rgba(0, 180, 216, 0.1), rgba(0, 255, 208, 0.1)); padding: 8px 16px; border-radius: 12px;">
-                        <span style="color: #00ffd0; font-weight: 600;">AI Generated</span>
+                        <span style="color: #00ffd0; font-weight: 600;">3-Line Structure</span>
                     </div>
                 </div>
-                <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 16px; border: 1px solid rgba(0, 180, 216, 0.1);">
+                
+                <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 16px; border: 1px solid rgba(0, 180, 216, 0.1); margin: 20px 0;">
                     <pre style="white-space: pre-wrap; font-family: 'Inter', sans-serif; line-height: 1.8; margin: 0; color: #e6f7ff; font-size: 1.05rem;">
 {current_msg}
                     </pre>
+                </div>
+                
+                <div style="margin-top: 25px;">
+                    <h5 style="color: #e6f7ff; margin-bottom: 15px;">Structure Analysis:</h5>
+                    <div style="background: rgba(255, 255, 255, 0.02); padding: 20px; border-radius: 12px;">
+                        {"<br>".join(structure_analysis)}
+                    </div>
                 </div>
             </div>
             ''', unsafe_allow_html=True)
@@ -1029,13 +1084,13 @@ if st.session_state.profile_data and st.session_state.research_brief:
             # Refinement Mode
             if st.session_state.regenerate_mode:
                 st.markdown("---")
-                st.markdown('<h4 style="color: #e6f7ff;"><i class="fas fa-magic" style="margin-right: 10px;"></i>Message Refinement</h4>', unsafe_allow_html=True)
+                st.markdown('<h4 style="color: #e6f7ff;"><i class="fas fa-magic" style="margin-right: 10px;"></i>Refine Message</h4>', unsafe_allow_html=True)
                 
                 with st.form("refinement_form"):
                     instructions = st.text_area(
-                        "Refinement Instructions",
+                        "How would you like to improve this message?",
                         value=st.session_state.message_instructions,
-                        placeholder="Example: 'Make it more technical', 'Focus on leadership experience', 'Shorten to 200 characters'",
+                        placeholder="Example: 'Make line 2 more technical', 'Shorten line 1', 'Focus on AI experience in line 2'",
                         height=100
                     )
                     
@@ -1057,8 +1112,8 @@ if st.session_state.profile_data and st.session_state.research_brief:
                         with st.spinner("Refining message..."):
                             refined_message = analyze_and_generate_message(
                                 st.session_state.profile_data,
+                                st.session_state.sender_data,
                                 groq_api_key,
-                                st.session_state.sender_info,
                                 instructions,
                                 current_msg
                             )
@@ -1084,8 +1139,12 @@ if st.session_state.profile_data and st.session_state.research_brief:
                     border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
                     bg_color = "rgba(0, 180, 216, 0.05)" if is_active else "rgba(255, 255, 255, 0.02)"
                     
+                    # Extract first line of content for preview
+                    lines = msg.split('\n')
+                    preview = lines[1] if len(lines) > 1 else msg[:80]
+                    
                     st.markdown(f'''
-                    <div style="background: {bg_color}; padding: 18px; border-radius: 16px; margin: 10px 0; border: 1px solid {border_color}; cursor: pointer; transition: all 0.3s;"
+                    <div style="background: {bg_color}; padding: 18px; border-radius: 16px; margin: 10px 0; border: 1px solid {border_color}; cursor: pointer;"
                          onclick="window.location.href='?select={idx}'">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center;">
@@ -1097,126 +1156,112 @@ if st.session_state.profile_data and st.session_state.research_brief:
                             {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.9rem;"><i class="fas fa-check-circle" style="margin-right: 5px;"></i>Active</span>' if is_active else ''}
                         </div>
                         <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.5;">
-                            {msg.split('\\n')[0][:90]}...
+                            {preview[:90]}...
                         </div>
                     </div>
                     ''', unsafe_allow_html=True)
         
         else:
             st.markdown('''
-            <div class="config-card-3d" style="text-align: center; padding: 60px 30px;">
+            <div class="card-3d" style="text-align: center; padding: 60px 30px;">
                 <div style="font-size: 4rem; margin-bottom: 20px; color: #00b4d8;">
                     <i class="fas fa-comment-dots"></i>
                 </div>
                 <h4 style="color: #e6f7ff; margin-bottom: 15px;">Generate Your First Message</h4>
                 <p style="color: #8892b0; max-width: 400px; margin: 0 auto;">
-                    Click the "Generate AI Message" button above to create a personalized LinkedIn connection message based on the analyzed profile.
+                    Click "Generate AI Message" to create a 3-line personalized message using your profile and the prospect's information.
                 </p>
             </div>
             ''', unsafe_allow_html=True)
     
     with tab2:
-        st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-chart-line" style="margin-right: 12px;"></i>Research Intelligence Brief</h3>', unsafe_allow_html=True)
-        st.markdown('<div class="config-card-3d">', unsafe_allow_html=True)
+        st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-chart-line" style="margin-right: 12px;"></i>Research Brief</h3>', unsafe_allow_html=True)
+        st.markdown('<div class="card-3d">', unsafe_allow_html=True)
         st.markdown(st.session_state.research_brief)
         st.markdown('</div>', unsafe_allow_html=True)
     
     with tab3:
-        st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-user-tie" style="margin-right: 12px;"></i>Profile Data Analysis</h3>', unsafe_allow_html=True)
-        with st.expander("View Raw Profile Data", expanded=False):
+        st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;"><i class="fas fa-user-tie" style="margin-right: 12px;"></i>Profile Data</h3>', unsafe_allow_html=True)
+        with st.expander("View Prospect Data", expanded=False):
             st.json(st.session_state.profile_data)
+        
+        with st.expander("View Your Data", expanded=False):
+            if st.session_state.sender_data:
+                st.json(st.session_state.sender_data)
+            else:
+                st.info("Your profile data not loaded.")
 
 else:
     # Welcome State
-    st.markdown('''
-    <div style="text-align: center; padding: 80px 20px;">
-        <div style="position: relative; display: inline-block; margin-bottom: 40px;">
-            <div style="width: 120px; height: 120px; background: linear-gradient(135deg, #00b4d8, #00ffd0); border-radius: 30px; transform: rotate(45deg); margin: 0 auto 40px; position: relative; box-shadow: 0 20px 60px rgba(0, 180, 216, 0.4);">
-                <i class="fas fa-brain" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 3rem; color: white;"></i>
+    if not st.session_state.sender_info:
+        st.markdown('''
+        <div style="text-align: center; padding: 80px 20px;">
+            <div style="position: relative; display: inline-block; margin-bottom: 40px;">
+                <div style="width: 120px; height: 120px; background: linear-gradient(135deg, #00b4d8, #00ffd0); border-radius: 30px; transform: rotate(45deg); margin: 0 auto 40px; position: relative; box-shadow: 0 20px 60px rgba(0, 180, 216, 0.4);">
+                    <i class="fas fa-brain" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 3rem; color: white;"></i>
+                </div>
+            </div>
+            <h2 style="color: #e6f7ff; margin-bottom: 20px; font-size: 2.5rem;">Get Started with LINZY</h2>
+            <p style="color: #8892b0; max-width: 600px; margin: 0 auto 50px; line-height: 1.8; font-size: 1.1rem;">
+                To generate personalized LinkedIn messages, please start by analyzing your own LinkedIn profile above.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap;">
+                <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
+                    <div style="color: #00b4d8; font-size: 2rem; margin-bottom: 15px;">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
+                    <h4 style="color: #e6f7ff; margin-bottom: 10px;">1. Your Profile</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">Analyze your LinkedIn profile first</p>
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
+                    <div style="color: #00ffd0; font-size: 2rem; margin-bottom: 15px;">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <h4 style="color: #e6f7ff; margin-bottom: 10px;">2. Prospect Profile</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">Analyze the prospect's LinkedIn profile</p>
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
+                    <div style="color: #c8b6ff; font-size: 2rem; margin-bottom: 15px;">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h4 style="color: #e6f7ff; margin-bottom: 10px;">3. Generate</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">AI creates personalized 3-line messages</p>
+                </div>
             </div>
         </div>
-        <h2 style="color: #e6f7ff; margin-bottom: 20px; font-size: 2.5rem;">LINZY</h2>
-        <p style="color: #8892b0; max-width: 600px; margin: 0 auto 50px; line-height: 1.8; font-size: 1.1rem;">
-            Advanced AI-powered prospect intelligence system. Analyze LinkedIn profiles, generate personalized messages, and create detailed research briefs with neural network precision.
-        </p>
-        <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap;">
-            <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
-                <div style="color: #00b4d8; font-size: 2rem; margin-bottom: 15px;">
-                    <i class="fas fa-bolt"></i>
-                </div>
-                <h4 style="color: #e6f7ff; margin-bottom: 10px;">Fast Analysis</h4>
-                <p style="color: #8892b0; font-size: 0.9rem;">Real-time profile processing with AI intelligence</p>
-            </div>
-            <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
-                <div style="color: #00ffd0; font-size: 2rem; margin-bottom: 15px;">
-                    <i class="fas fa-robot"></i>
-                </div>
-                <h4 style="color: #e6f7ff; margin-bottom: 10px;">AI Powered</h4>
-                <p style="color: #8892b0; font-size: 0.9rem;">Linzy message generation and refinement</p>
-            </div>
-            <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
-                <div style="color: #c8b6ff; font-size: 2rem; margin-bottom: 15px;">
-                    <i class="fas fa-chart-network"></i>
-                </div>
-                <h4 style="color: #e6f7ff; margin-bottom: 10px;">Smart Insights</h4>
-                <p style="color: #8892b0; font-size: 0.9rem;">Comprehensive research and data analysis</p>
-            </div>
-        </div>
-    </div>
-    ''', unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)
+    else:
+        st.info(" Enter a prospect's LinkedIn URL above and click 'Analyze Prospect' to get started.")
 
-st.markdown('</div>', unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
 # --- Footer ---
 st.markdown("---")
 col_f1, col_f2, col_f3 = st.columns(3)
 with col_f1:
-    st.markdown('<p style="color: #8892b0; font-size: 0.9rem;">Linzy v2.1 | AI Prospect Intelligence</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: #8892b0; font-size: 0.9rem;">Linzy v2.2 | AI LinkedIn Messaging</p>', unsafe_allow_html=True)
 with col_f2:
-    st.markdown(f'<p style="color: #8892b0; font-size: 0.9rem; text-align: center;">Last Updated: {datetime.now().strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p style="color: #8892b0; font-size: 0.9rem; text-align: center;">{datetime.now().strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
 with col_f3:
     if st.session_state.profile_data:
-        name = "Profile Loaded"
+        name = "Prospect Loaded"
         if isinstance(st.session_state.profile_data, dict):
             if 'fullname' in st.session_state.profile_data:
                 name = st.session_state.profile_data['fullname'][:25]
-        st.markdown(f'<p style="color: #8892b0; font-size: 0.9rem; text-align: right;">Active: {name}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="color: #8892b0; font-size: 0.9rem; text-align: right;">Prospect: {name}</p>', unsafe_allow_html=True)
     else:
         st.markdown('<p style="color: #8892b0; font-size: 0.9rem; text-align: right;">Status: Ready</p>', unsafe_allow_html=True)
 
-# Add JavaScript for Enhanced 3D Effects and Input Animations
+# Add JavaScript for interactive effects
 st.markdown("""
 <script>
-// Enhanced 3D tilt effect to main card
+// Interactive input effects
 document.addEventListener('DOMContentLoaded', function() {
-    const mainCard = document.querySelector('.main-3d-card');
-    
-    if (mainCard) {
-        mainCard.addEventListener('mousemove', function(e) {
-            const rect = this.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            
-            const rotateY = ((x - centerX) / centerX) * 3;
-            const rotateX = ((centerY - y) / centerY) * 3;
-            
-            this.style.transform = `rotateY(${rotateY}deg) rotateX(${rotateX}deg) translateY(-10px)`;
-        });
-        
-        mainCard.addEventListener('mouseleave', function() {
-            this.style.transform = 'rotateY(-2deg) rotateX(1deg) translateY(0)';
-        });
-    }
-    
-    // Enhanced input focus effects
-    const enhancedInputs = document.querySelectorAll('.enhanced-input-3d');
-    enhancedInputs.forEach(input => {
+    // Add focus effects to all inputs
+    const inputs = document.querySelectorAll('input[type="text"]');
+    inputs.forEach(input => {
         input.addEventListener('focus', function() {
-            this.parentElement.style.transform = 'translateY(-5px)';
+            this.parentElement.style.transform = 'translateY(-3px)';
         });
         
         input.addEventListener('blur', function() {
@@ -1231,13 +1276,6 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
             window.history.replaceState({}, document.title, window.location.pathname);
         }, 100);
-    }
-    
-    // Success animation trigger
-    if (document.querySelector('.success-animation')) {
-        setTimeout(() => {
-            document.querySelector('.success-animation').classList.remove('success-animation');
-        }, 500);
     }
 });
 </script>
