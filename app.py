@@ -1190,7 +1190,6 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                         border: 1px solid {border_color};
                         cursor: pointer;"
                         onclick="window.location.href='?select={idx}'">
-
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <div style="display: flex; align-items: center;">
                                 <span style="color: #e6f7ff; font-weight: 600; margin-right: 15px;">
