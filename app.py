@@ -761,7 +761,7 @@ st.markdown('<div class="main-3d-card">', unsafe_allow_html=True)
 # --- Header Section ---
 col1, col2 = st.columns([4, 1])
 with col1:
-    st.markdown('<h1 class="gradient-text-primary" style="font-size: 3.5rem; margin-bottom: 10px;">NEURAL CONNECT</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="gradient-text-primary" style="font-size: 3.5rem; margin-bottom: 10px;">LINZY</h1>', unsafe_allow_html=True)
     st.markdown('<p style="color: #8892b0; font-size: 1.2rem; margin-bottom: 40px;">Advanced AI-Powered Prospect Intelligence Platform</p>', unsafe_allow_html=True)
 with col2:
     st.markdown(f'''
