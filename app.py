@@ -1092,7 +1092,6 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             <span style="color: #00ffd0; font-weight: 600;">3-Line Structure</span>
         </div>
     </div>
-    
     <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 16px; border: 1px solid rgba(0, 180, 216, 0.1); margin: 20px 0;">
         <pre style="white-space: pre-wrap; font-family: 'Inter', sans-serif; line-height: 1.8; margin: 0; color: #e6f7ff; font-size: 1.05rem; word-wrap: break-word; overflow-wrap: break-word;">
 {current_msg}
