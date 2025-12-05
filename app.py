@@ -765,7 +765,7 @@ if 'sender_analyzing' not in st.session_state:
     st.session_state.sender_analyzing = False
 
 # --- Main Container ---
-st.markdown('<div class="main-container">', unsafe_allow_html=True)
+# st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # --- Header Section ---
 col1, col2 = st.columns([4, 1])
