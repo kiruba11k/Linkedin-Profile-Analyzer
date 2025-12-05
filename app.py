@@ -394,7 +394,7 @@ Generate a refined LinkedIn connection message with these requirements:
 3. Line 2: Connect your background/expertise to their field
 4. Line 3: Polite connection request like "Would be glad to connect."
 5. End with "Best, {sender_name}"
-6. Under 275 characters total
+6. Keep under 300 characters total
 7. Use professional, business-appropriate language
 8. Show genuine understanding of their work
 9. Avoid these words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
@@ -414,7 +414,7 @@ Generate a LinkedIn connection message with these requirements:
 3. Line 2: Connect your background/expertise to their field
 4. Line 3: Polite connection request like "Would be glad to connect."
 5. End with "Best, {sender_name}"
-6. Under 275 characters total
+6. Keep under 300 characters total
 7. Use professional, business-appropriate language
 8. Show genuine understanding of their work
 9. Avoid these words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
@@ -511,23 +511,6 @@ Generate only the message:'''
                             message = f"{message}\nBest, {sender_name}"
                     break
             
-            # Final length check
-            if len(message) > 275:
-                lines = message.split('\n')
-                if len(lines) >= 5:
-                    shortened = [lines[0]]
-                    for i in range(1, 4):
-                        if i < len(lines):
-                            if len(lines[i]) > 100:
-                                shortened.append(lines[i][:97] + '...')
-                            else:
-                                shortened.append(lines[i])
-                    shortened.append(lines[-1])
-                    message = '\n'.join(shortened)
-                
-                if len(message) > 275:
-                    message = message[:272] + '...'
-            
             return message
             
         else:
@@ -536,7 +519,9 @@ Generate only the message:'''
             
     except Exception as e:
         # Professional fallback
-        return f"Hi {prospect_name},\nYour experience in your industry demonstrates professional depth.\nI work on business improvements in related fields.\nWould be good to connect.\nBest, {sender_name}"# ========== STREAMLIT APPLICATION ==========
+        return f"Hi {prospect_name},\nYour experience in your industry demonstrates professional depth.\nI work on business improvements in related fields.\nWould be good to connect.\nBest, {sender_name}"
+
+# ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
     page_title="Linzy | AI Prospect Intelligence",
@@ -1108,8 +1093,8 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
         </div>
     </div>
     
-    <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 16px; border: 1px solid rgba(0, 180, 216, 0.1); margin: 20px 0; min-height: 180px; max-height: 250px; overflow-y: auto;">
-        <pre style="white-space: pre-wrap; font-family: 'Inter', sans-serif; line-height: 1.8; margin: 0; color: #e6f7ff; font-size: 1.05rem; word-wrap: break-word;">
+    <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 16px; border: 1px solid rgba(0, 180, 216, 0.1); margin: 20px 0;">
+        <pre style="white-space: pre-wrap; font-family: 'Inter', sans-serif; line-height: 1.8; margin: 0; color: #e6f7ff; font-size: 1.05rem; word-wrap: break-word; overflow-wrap: break-word;">
 {current_msg}
         </pre>
     </div>
