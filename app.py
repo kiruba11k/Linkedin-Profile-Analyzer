@@ -765,13 +765,13 @@ if 'sender_analyzing' not in st.session_state:
     st.session_state.sender_analyzing = False
 
 # --- Main Container ---
-# st.markdown('<div class="main-container">', unsafe_allow_html=True)
+st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # --- Header Section ---
 col1, col2 = st.columns([4, 1])
 with col1:
     st.markdown('<h1 class="gradient-text-primary" style="font-size: 3.5rem; margin-bottom: 10px;">LINZY</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="color: #8892b0; font-size: 1.2rem; margin-bottom: 40px;">AI-Powered LinkedIn Message Generator</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: #8892b0; font-size: 1.2rem; margin-bottom: 40px;">AI Powered LinkedIn Message Generator</p>', unsafe_allow_html=True)
 with col2:
     sender_name = "Not Set"
     if st.session_state.sender_info:
