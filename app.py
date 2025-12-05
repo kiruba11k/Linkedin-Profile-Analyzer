@@ -1200,10 +1200,10 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                                 </span>
                             </div>
                             {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.9rem;">Active</span>' if is_active else ''}
-                        </div>
-                        <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.5;">
-                            {preview[:90]}...
-                        </div>
+                            </div>
+                                <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.5;">
+                                    {preview[:90]}...
+                                </div>
                     </div>
                     ''', unsafe_allow_html=True)
 
