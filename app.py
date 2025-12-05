@@ -379,42 +379,42 @@ modern_3d_css = """
     }
     
     /* Main 3D Card */
-    .main-3d-card {
-        background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
-        backdrop-filter: blur(20px);
-        border-radius: 32px;
-        padding: 50px;
-        margin: 30px;
-        border: 1px solid rgba(0, 180, 216, 0.1);
-        box-shadow: 
-            0 50px 100px rgba(0, 180, 216, 0.1),
-            inset 0 1px 0 rgba(255, 255, 255, 0.1),
-            0 0 100px rgba(0, 180, 216, 0.05);
-        transform: rotateY(-2deg) rotateX(1deg);
-        animation: float3d 6s ease-in-out infinite;
-        position: relative;
-        overflow: hidden;
-    }
+    # .main-3d-card {
+    #     background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+    #     backdrop-filter: blur(20px);
+    #     border-radius: 32px;
+    #     padding: 50px;
+    #     margin: 30px;
+    #     border: 1px solid rgba(0, 180, 216, 0.1);
+    #     box-shadow: 
+    #         0 50px 100px rgba(0, 180, 216, 0.1),
+    #         inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    #         0 0 100px rgba(0, 180, 216, 0.05);
+    #     transform: rotateY(-2deg) rotateX(1deg);
+    #     animation: float3d 6s ease-in-out infinite;
+    #     position: relative;
+    #     overflow: hidden;
+    # }
     
-    @keyframes float3d {
-        0%, 100% { transform: rotateY(-2deg) rotateX(1deg) translateY(0); }
-        50% { transform: rotateY(-2deg) rotateX(1deg) translateY(-10px); }
-    }
+    # @keyframes float3d {
+    #     0%, 100% { transform: rotateY(-2deg) rotateX(1deg) translateY(0); }
+    #     50% { transform: rotateY(-2deg) rotateX(1deg) translateY(-10px); }
+    # }
     
-    .main-3d-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.1), transparent);
-        transition: 0.5s;
-    }
+    # .main-3d-card::before {
+    #     content: '';
+    #     position: absolute;
+    #     top: 0;
+    #     left: -100%;
+    #     width: 100%;
+    #     height: 100%;
+    #     background: linear-gradient(90deg, transparent, rgba(0, 180, 216, 0.1), transparent);
+    #     transition: 0.5s;
+    # }
     
-    .main-3d-card:hover::before {
-        left: 100%;
-    }
+    # .main-3d-card:hover::before {
+    #     left: 100%;
+    # }
     
     /* Neural Network Background */
     .neural-network {
