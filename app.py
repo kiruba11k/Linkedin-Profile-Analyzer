@@ -135,7 +135,7 @@ def generate_research_brief(profile_data: dict, api_key: str) -> str:
         }
         
         payload = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {
                     "role": "system",
@@ -282,7 +282,7 @@ Generate ONLY the personalized message:'''
         }
         
         payload = {
-            "model": "llama3-70b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {
                     "role": "system", 
