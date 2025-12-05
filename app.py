@@ -1182,22 +1182,35 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                     preview = lines[1] if len(lines) > 1 else msg[:80]
                     
                     st.markdown(f'''
-                    <div style="background: {bg_color}; padding: 18px; border-radius: 16px; margin: 10px 0; border: 1px solid {border_color}; cursor: pointer;"
-                         onclick="window.location.href='?select={idx}'">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <div style="display: flex; align-items: center;">
-                                <span style="color: #e6f7ff; font-weight: 600; margin-right: 15px;">Version {idx + 1}</span>
-                                <span style="color: #8892b0; font-size: 0.85rem;">
-                                    {len(msg)} characters
-                                </span>
-                            </div>
-                            {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.9rem;">Active</span>' if is_active else ''}
-                        </div>
-                        <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.5;">
-                            {preview[:90]}...
-                        </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
+                    <div style="
+    background: {bg_color};
+    padding: 18px;
+    border-radius: 16px;
+    margin: 10px 0;
+    border: 1px solid {border_color};
+    cursor: pointer;"
+    onclick="window.location.href='?select={idx}'">
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; align-items: center;">
+            <span style="color: #e6f7ff; font-weight: 600; margin-right: 15px;">
+                Version {idx + 1}
+            </span>
+            <span style="color: #8892b0; font-size: 0.85rem;">
+                {len(msg)} characters
+            </span>
+        </div>
+
+        {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.9rem;">Active</span>' if is_active else ''}
+    </div>
+
+    <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.5;">
+        {preview[:90]}...
+    </div>
+
+</div>
+''', unsafe_allow_html=True)
+
         
         else:
             st.markdown('''
