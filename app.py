@@ -235,6 +235,95 @@ Return only valid JSON with these keys.'''
             "professional_summary": ""
         }
 
+def extract_sender_info_from_apify_data(apify_data: dict) -> dict:
+    """
+    Extract structured sender information from Apify LinkedIn profile data.
+    """
+    sender_info = {
+        "name": "Professional Contact",
+        "current_role": "Professional",
+        "current_company": "",
+        "expertise": "",
+        "industry": "",
+        "key_achievements": "",
+        "professional_summary": ""
+    }
+    
+    try:
+        if isinstance(apify_data, dict):
+            # Extract name
+            if apify_data.get('fullname'):
+                sender_info['name'] = apify_data['fullname']
+            elif apify_data.get('basic_info') and apify_data['basic_info'].get('fullname'):
+                sender_info['name'] = apify_data['basic_info']['fullname']
+            
+            # Extract headline/role
+            if apify_data.get('headline'):
+                headline = apify_data['headline']
+                sender_info['current_role'] = headline
+                
+                # Try to extract company from headline
+                if ' at ' in headline:
+                    parts = headline.split(' at ')
+                    sender_info['current_role'] = parts[0].strip()
+                    if len(parts) > 1:
+                        sender_info['current_company'] = parts[1].strip()
+            
+            # Extract company from experience
+            if apify_data.get('experience') and isinstance(apify_data['experience'], list):
+                if len(apify_data['experience']) > 0:
+                    current_exp = apify_data['experience'][0]
+                    if current_exp.get('company'):
+                        sender_info['current_company'] = current_exp.get('company')
+                    if current_exp.get('title') and not sender_info['current_role']:
+                        sender_info['current_role'] = current_exp.get('title')
+            
+            # Extract summary
+            if apify_data.get('about'):
+                sender_info['professional_summary'] = apify_data['about'][:300]
+            
+            # Extract expertise from skills
+            if apify_data.get('skills') and isinstance(apify_data['skills'], list):
+                expertise_items = []
+                for skill in apify_data['skills']:
+                    if isinstance(skill, dict) and skill.get('name'):
+                        expertise_items.append(skill['name'])
+                    elif isinstance(skill, str):
+                        expertise_items.append(skill)
+                
+                if expertise_items:
+                    sender_info['expertise'] = ", ".join(expertise_items[:5])
+            
+            # Determine industry from headline/summary
+            industry_keywords = {
+                "Technology": ["tech", "software", "AI", "machine learning", "data", "cloud", "SaaS"],
+                "Finance": ["finance", "banking", "investment", "financial", "accounting"],
+                "Healthcare": ["health", "medical", "pharma", "biotech", "hospital"],
+                "Education": ["education", "university", "school", "learning", "academic"],
+                "Consulting": ["consulting", "consultant", "advisory", "strategy"],
+                "Sales": ["sales", "business development", "account executive", "revenue"]
+            }
+            
+            profile_text = (sender_info.get('current_role', '') + ' ' + 
+                          sender_info.get('professional_summary', '')).lower()
+            
+            for industry, keywords in industry_keywords.items():
+                for keyword in keywords:
+                    if keyword.lower() in profile_text:
+                        sender_info['industry'] = industry
+                        break
+                if sender_info['industry']:
+                    break
+            
+            if not sender_info['expertise']:
+                # Use role as expertise if no skills found
+                sender_info['expertise'] = sender_info.get('current_role', 'Professional')
+    
+    except Exception as e:
+        pass
+    
+    return sender_info
+
 def analyze_and_generate_message(prospect_data: dict, sender_info: dict, api_key: str, 
                                 user_instructions: str = None, previous_message: str = None) -> str:
     """
@@ -688,6 +777,8 @@ if 'processing_status' not in st.session_state:
     st.session_state.processing_status = "Ready"
 if 'sender_info' not in st.session_state:
     st.session_state.sender_info = None
+if 'sender_data' not in st.session_state:
+    st.session_state.sender_data = None
 if 'message_instructions' not in st.session_state:
     st.session_state.message_instructions = ""
 if 'regenerate_mode' not in st.session_state:
@@ -812,6 +903,7 @@ if st.session_state.sender_tab == "linkedin":
             type="secondary"
         ):
             st.session_state.sender_info = None
+            st.session_state.sender_data = None
             st.rerun()
     
     if analyze_sender_clicked and sender_linkedin_url:
@@ -831,30 +923,17 @@ if st.session_state.sender_tab == "linkedin":
                     )
                     
                     if sender_data:
-                        # Convert Apify data to text for LLM analysis
-                        profile_text = ""
-                        if isinstance(sender_data, dict):
-                            if sender_data.get('fullname'):
-                                profile_text += f"Name: {sender_data['fullname']}\n"
-                            if sender_data.get('headline'):
-                                profile_text += f"Headline: {sender_data['headline']}\n"
-                            if sender_data.get('about'):
-                                profile_text += f"About: {sender_data['about']}\n"
-                            if sender_data.get('experience'):
-                                profile_text += "Experience:\n"
-                                for exp in sender_data.get('experience', []):
-                                    title = exp.get('title', '')
-                                    company = exp.get('company', '')
-                                    if title or company:
-                                        profile_text += f"- {title} at {company}\n"
-                        
-                        # Analyze with LLM
-                        st.session_state.sender_info = analyze_sender_profile_with_llm(profile_text, groq_api_key)
+                        st.session_state.sender_data = sender_data
+                        # Extract structured info from Apify data
+                        st.session_state.sender_info = extract_sender_info_from_apify_data(sender_data)
                         st.success("Profile analyzed successfully")
                         st.session_state.sender_analyzing = False
                     else:
-                        st.error("Failed to analyze your profile.")
+                        st.error("Failed to analyze your LinkedIn profile. Please check the URL or try manual entry.")
                         st.session_state.sender_analyzing = False
+                else:
+                    st.error("Could not start profile analysis. Please try again.")
+                    st.session_state.sender_analyzing = False
 
 else:  # Manual tab
     st.markdown('<p style="color: #8892b0; margin-bottom: 15px;">Paste or type your profile information manually</p>', unsafe_allow_html=True)
@@ -1150,8 +1229,6 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
         else:
             st.markdown('''
             <div class="card-3d" style="text-align: center; padding: 60px 30px;">
-                <div style="font-size: 4rem; margin-bottom: 20px; color: #00b4d8;">
-                </div>
                 <h4 style="color: #e6f7ff; margin-bottom: 15px;">Generate Your First Message</h4>
                 <p style="color: #8892b0; max-width: 400px; margin: 0 auto;">
                     Click Generate AI Message to create a 3-line personalized message using your profile and the prospect information.
@@ -1171,7 +1248,10 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             st.json(st.session_state.profile_data)
         
         with st.expander("View Your Profile Data", expanded=False):
-            st.json(st.session_state.sender_info)
+            if st.session_state.sender_data:
+                st.json(st.session_state.sender_data)
+            else:
+                st.json(st.session_state.sender_info)
 
 else:
     if not st.session_state.sender_info:
@@ -1187,20 +1267,14 @@ else:
             </p>
             <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap;">
                 <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
-                    <div style="color: #00b4d8; font-size: 2rem; margin-bottom: 15px;">
-                    </div>
                     <h4 style="color: #e6f7ff; margin-bottom: 10px;">1. Your Profile</h4>
                     <p style="color: #8892b0; font-size: 0.9rem;">Analyze your LinkedIn profile or enter manually</p>
                 </div>
                 <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
-                    <div style="color: #00ffd0; font-size: 2rem; margin-bottom: 15px;">
-                    </div>
                     <h4 style="color: #e6f7ff; margin-bottom: 10px;">2. Prospect Profile</h4>
                     <p style="color: #8892b0; font-size: 0.9rem;">Analyze the prospect LinkedIn profile</p>
                 </div>
                 <div style="background: rgba(255, 255, 255, 0.03); padding: 25px; border-radius: 20px; width: 200px; border: 1px solid rgba(0, 180, 216, 0.1);">
-                    <div style="color: #c8b6ff; font-size: 2rem; margin-bottom: 15px;">
-                    </div>
                     <h4 style="color: #e6f7ff; margin-bottom: 10px;">3. Generate</h4>
                     <p style="color: #8892b0; font-size: 0.9rem;">AI creates personalized 3-line messages</p>
                 </div>
@@ -1216,7 +1290,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---")
 col_f1, col_f2, col_f3 = st.columns(3)
 with col_f1:
-    st.markdown('<p style="color: #8892b0; font-size: 0.9rem;">Linzy v2.3 | AI LinkedIn Messaging</p>', unsafe_allow_html=True)
+    st.markdown('<p style="color: #8892b0; font-size: 0.9rem;">Linzy v2.4 | AI LinkedIn Messaging</p>', unsafe_allow_html=True)
 with col_f2:
     st.markdown(f'<p style="color: #8892b0; font-size: 0.9rem; text-align: center;">{datetime.now().strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
 with col_f3:
