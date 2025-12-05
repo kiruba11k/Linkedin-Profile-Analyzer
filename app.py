@@ -373,54 +373,10 @@ def analyze_and_generate_message(prospect_data: dict, sender_info: dict, api_key
     if sender_info.get('professional_summary'):
         sender_context += f"\nSender Summary: {sender_info['professional_summary']}"
     
-    # Sample messages for the LLM to learn from
-    sample_messages = '''EXAMPLES OF DESIRED MESSAGE STYLE:
-
-1. For Finance/FP&A:
-"Hi David,
-Your FP&A leadership at Planet—especially across Adaptive Planning and comp modeling—shows rare execution depth across both finance and tech ops. I focus on automating financial workflows to improve accuracy and forecasting agility. Would be glad to connect.
-Best, Joseph"
-
-2. For Lending/Operations:
-"Hi Gabriel,
-Your move to Planet Home Lending builds on deep experience in origination, recruiting, and growth across the Southeast. I focus on automating lending workflows to improve turnaround and reduce manual bottlenecks. Would be glad to connect.
-Best, Joseph"
-
-3. For Specialized Lending:
-"Hi James,
-Your work leading renovation lending at Planet—built on decades across 203(k), HomeStyle, and builder programs—gives you sharp insight into delivery gaps. I focus on automating loan workflows to reduce friction and improve control.
-Best, Joseph"
-
-4. For IT/Technology Leadership:
-"Hi Bill,
-Your leadership at Planet and track record of aligning IT and business goals to create cost-efficient, scalable organizations is inspiring. I work on automating workflows that increase speed-to-decision and tech ROI across mortgage platforms.
-Best, Joseph"
-
-5. For Risk Management:
-"Hi Chris,
-Your leadership in credit risk at Planet Home Lending shows deep expertise in portfolio analysis. I focus on automating risk management workflows to enhance decision-making and reduce exposure.
-Best, Joseph"
-
-KEY PATTERNS TO FOLLOW:
-- Line 1: Start with "Hi [First Name]," then mention something specific about THEIR expertise/role/experience
-- Line 2: State "I focus on automating [their domain] workflows to improve [specific outcome]"
-- Line 3: Simple connection request: "Would be glad to connect."
-- Signature: "Best, [Your First Name]"
-- Use industry-specific terminology
-- Show understanding of their domain
-- Connect automation to their specific pain points
-- Keep sentences concise and professional'''
-
     # Generate message based on mode
     if user_instructions and previous_message:
         # Refinement mode
-        prompt = f'''You are an expert LinkedIn message writer who creates professional 3-line messages following the examples below.
-
-{sample_messages}
-
-IMPORTANT AVOIDANCE LIST - DO NOT USE THESE WORDS: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out, curious
-
-PROSPECT INFORMATION:
+        prompt = f'''PROSPECT INFORMATION:
 {prospect_summary}
 
 YOUR (SENDER) INFORMATION:
@@ -432,43 +388,38 @@ ORIGINAL MESSAGE TO REFINE:
 REFINEMENT INSTRUCTIONS:
 {user_instructions}
 
-CRITICAL REQUIREMENTS:
+Generate a refined LinkedIn connection message with these requirements:
 1. Use exactly 3 content lines
-2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their expertise/role
-3. Line 2: State "I focus on automating [their domain] workflows to improve [specific outcome]"
-4. Line 3: "Would be glad to connect."
+2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their profile
+3. Line 2: Connect your background/expertise to their field
+4. Line 3: Polite connection request like "Would be glad to connect."
 5. End with "Best, {sender_name}"
 6. Under 275 characters total
-7. Use professional, direct language
-8. Show understanding of their specific domain/industry
+7. Use professional, business-appropriate language
+8. Show genuine understanding of their work
+9. Avoid these words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
 
 Generate only the refined message:'''
     else:
         # New generation mode
-        prompt = f'''You are an expert LinkedIn message writer who creates professional 3-line messages following the examples below.
-
-{sample_messages}
-
-IMPORTANT AVOIDANCE LIST - DO NOT USE THESE WORDS: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out, curious
-
-PROSPECT INFORMATION:
+        prompt = f'''PROSPECT INFORMATION:
 {prospect_summary}
 
 YOUR (SENDER) INFORMATION:
 {sender_context}
 
-CRITICAL REQUIREMENTS:
-1. Use exactly 3 content lines following the example structure
-2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their expertise/role/experience
-3. Line 2: State "I focus on automating [their domain] workflows to improve [specific outcome]"
-4. Line 3: Simple connection request: "Would be glad to connect."
+Generate a LinkedIn connection message with these requirements:
+1. Use exactly 3 content lines
+2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their profile
+3. Line 2: Connect your background/expertise to their field
+4. Line 3: Polite connection request like "Would be glad to connect."
 5. End with "Best, {sender_name}"
 6. Under 275 characters total
-7. Use professional, direct language
-8. Show understanding of their specific domain/industry
-9. Connect automation to their likely pain points
+7. Use professional, business-appropriate language
+8. Show genuine understanding of their work
+9. Avoid these words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
 
-Generate only the message following the exact pattern of the examples:'''
+Generate only the message:'''
     
     try:
         headers = {
@@ -481,22 +432,21 @@ Generate only the message following the exact pattern of the examples:'''
             "messages": [
                 {
                     "role": "system", 
-                    "content": f'''You are a professional LinkedIn message writer specialized in creating concise, 3-line messages for business professionals.
-                    Strict rules:
-                    - ALWAYS follow the 3-line structure from the examples
-                    - Line 1: Specific compliment about prospect's expertise
-                    - Line 2: "I focus on automating [their domain] workflows to improve [outcome]"
-                    - Line 3: "Would be glad to connect."
-                    - NEVER use any words from the avoidance list
-                    - Use professional, direct language only
-                    - Show domain understanding without flattery
-                    - Focus on automation and workflow improvement
-                    - Always end with "Best, [First Name]"'''
+                    "content": f'''You are a professional LinkedIn message writer.
+                    Rules:
+                    - Use exactly 3 content lines
+                    - No flirty or romantic language
+                    - No informal tone
+                    - No generic phrases
+                    - Keep it professional and concise
+                    - Always end with "Best, [First Name]"
+                    - Focus on mutual professional interests
+                    - Show understanding of their specific work'''
                 },
                 {"role": "user", "content": prompt}
             ],
-            "temperature": 0.5,
-            "max_tokens": 300
+            "temperature": 0.7,
+            "max_tokens": 350
         }
         
         response = requests.post(
@@ -520,133 +470,73 @@ Generate only the message following the exact pattern of the examples:'''
             if not message.strip().endswith(f"Best, {sender_name}"):
                 message = f"{message.rstrip()}\nBest, {sender_name}"
             
-            # Check for forbidden words from avoidance list
-            forbidden_words = [
-                "exploring", "interested", "learning", "no easy feat", "impressive",
-                "noteworthy", "remarkable", "fascinating", "admiring", "inspiring",
-                "no small feat", "no easy task", "stood out", "curious", "exciting",
-                "awesome", "amazing", "fantastic", "wonderful", "great"
-            ]
-            
-            # Additional flirty/romantic words to avoid
-            flirty_words = [
+            # Check for forbidden content
+            forbidden_phrases = [
                 "beautiful", "attractive", "handsome", "cute", "sexy",
                 "date", "dinner", "coffee date", "romantic", "love",
                 "hot", "gorgeous", "stunning", "hey baby", "hey sexy",
                 "sweetheart", "darling", "honey", "babe", "dear"
             ]
             
-            forbidden_words.extend(flirty_words)
-            
-            needs_regeneration = False
-            for word in forbidden_words:
-                if word.lower() in message.lower():
-                    needs_regeneration = True
+            for phrase in forbidden_phrases:
+                if phrase.lower() in message.lower():
+                    # Regenerate with stricter filter
+                    strict_prompt = f'''Regenerate message for {prospect_name}. 
+                    Remove all romantic/flirty language.
+                    Keep strictly professional.
+                    Profile: {prospect_summary[:300]}
+                    Your info: {sender_context[:300]}'''
+                    
+                    strict_payload = {
+                        "model": "llama-3.1-8b-instant",
+                        "messages": [
+                            {"role": "system", "content": "Strictly professional only. No flirty language."},
+                            {"role": "user", "content": strict_prompt}
+                        ],
+                        "temperature": 0.5,
+                        "max_tokens": 250
+                    }
+                    
+                    strict_response = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers=headers,
+                        json=strict_payload,
+                        timeout=30
+                    )
+                    
+                    if strict_response.status_code == 200:
+                        message = strict_response.json()["choices"][0]["message"]["content"].strip()
+                        message = f"Hi {prospect_name},\n{message}"
+                        if not message.endswith(f"Best, {sender_name}"):
+                            message = f"{message}\nBest, {sender_name}"
                     break
             
-            if needs_regeneration:
-                # Regenerate with stricter filter
-                strict_prompt = f'''Regenerate message for {prospect_name} in professional 3-line format.
-                Prospect: {prospect_summary[:300]}
-                Your role: {sender_info.get('current_role', 'Professional')}
-                
-                REQUIREMENTS:
-                1. Line 1: "Hi {prospect_name}," + specific professional observation
-                2. Line 2: "I focus on automating [their field] workflows to improve [outcome]"
-                3. Line 3: "Would be glad to connect."
-                4. Signature: "Best, {sender_name}"
-                
-                DO NOT USE: exploring, interested, learning, impressive, remarkable, fascinating, admiring, inspiring, curious, or any flirty language.
-                
-                Keep it strictly professional and under 275 characters.'''
-                
-                strict_payload = {
-                    "model": "llama-3.1-8b-instant",
-                    "messages": [
-                        {"role": "system", "content": "Professional business communication only. Follow 3-line structure exactly. Avoid all forbidden words."},
-                        {"role": "user", "content": strict_prompt}
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 200
-                }
-                
-                strict_response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers=headers,
-                    json=strict_payload,
-                    timeout=30
-                )
-                
-                if strict_response.status_code == 200:
-                    message = strict_response.json()["choices"][0]["message"]["content"].strip()
-                    message = f"Hi {prospect_name},\n{message}"
-                    if not message.endswith(f"Best, {sender_name}"):
-                        message = f"{message}\nBest, {sender_name}"
-            
-            # Ensure the message follows the 3-line structure
-            lines = [line.strip() for line in message.split('\n') if line.strip()]
-            
-            # Remove greeting and signature lines for structure check
-            content_lines = []
-            for line in lines:
-                if not line.lower().startswith(f"hi {prospect_name.lower()}") and not line.lower().startswith(f"best,"):
-                    content_lines.append(line)
-            
-            if len(content_lines) != 3:
-                # Try to reformat to 3 lines
-                if len(content_lines) > 3:
-                    # Combine lines to get 3 content lines
-                    content_lines = [
-                        ' '.join(content_lines[:len(content_lines)//3]),
-                        ' '.join(content_lines[len(content_lines)//3:2*len(content_lines)//3]),
-                        ' '.join(content_lines[2*len(content_lines)//3:])
-                    ]
-                elif len(content_lines) < 3:
-                    # Fill with appropriate content
-                    while len(content_lines) < 3:
-                        if len(content_lines) == 0:
-                            content_lines.append(f"Your professional background in {prospect_info[0][:50]}...")
-                        elif len(content_lines) == 1:
-                            content_lines.append(f"I focus on automating workflows to improve efficiency.")
-                        else:
-                            content_lines.append("Would be glad to connect.")
-                
-                # Reconstruct the message
-                message = f"Hi {prospect_name},\n" + "\n".join(content_lines) + f"\nBest, {sender_name}"
-            
-            # Final length check and formatting
+            # Final length check
             if len(message) > 275:
-                # Try to shorten while keeping structure
                 lines = message.split('\n')
-                if len(lines) >= 4:
-                    # Shorten content lines while keeping structure
-                    content_start = 1 if lines[0].lower().startswith(f"hi {prospect_name.lower()}") else 0
-                    content_end = -1 if lines[-1].lower().startswith("best,") else len(lines)
-                    
-                    # Shorten middle content lines
-                    for i in range(content_start, content_end):
+                if len(lines) >= 5:
+                    shortened = [lines[0]]
+                    for i in range(1, 4):
                         if i < len(lines):
-                            if len(lines[i]) > 80:
-                                words = lines[i].split()
-                                if len(words) > 10:
-                                    lines[i] = ' '.join(words[:8]) + '...'
-                    
-                    message = '\n'.join(lines)
+                            if len(lines[i]) > 100:
+                                shortened.append(lines[i][:97] + '...')
+                            else:
+                                shortened.append(lines[i])
+                    shortened.append(lines[-1])
+                    message = '\n'.join(shortened)
                 
                 if len(message) > 275:
-                    # Final truncation as last resort
                     message = message[:272] + '...'
             
             return message
             
         else:
-            # Safe fallback in the sample style
-            return f"Hi {prospect_name},\nYour professional background shows experience in your field.\nI focus on automating workflows to improve operational efficiency.\nWould be glad to connect.\nBest, {sender_name}"
+            # Safe fallback
+            return f"Hi {prospect_name},\nYour professional background in your field shows expertise.\nI focus on improvements in similar areas.\nWould be glad to connect.\nBest, {sender_name}"
             
     except Exception as e:
-        # Professional fallback in the sample style
-        return f"Hi {prospect_name},\nYour experience in your industry demonstrates professional expertise.\nI work on automating business workflows to enhance productivity.\nWould be good to connect.\nBest, {sender_name}"
-# ========== STREAMLIT APPLICATION ==========
+        # Professional fallback
+        return f"Hi {prospect_name},\nYour experience in your industry demonstrates professional depth.\nI work on business improvements in related fields.\nWould be good to connect.\nBest, {sender_name}"# ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
     page_title="Linzy | AI Prospect Intelligence",
