@@ -792,36 +792,36 @@ with col2:
     ''', unsafe_allow_html=True)
 
 # --- Message Structure Guide ---
-st.markdown("---")
-st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 20px;">Message Structure</h3>', unsafe_allow_html=True)
+# st.markdown("---")
+# st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 20px;">Message Structure</h3>', unsafe_allow_html=True)
 
-st.markdown('''
-<div class="card-3d">
-    <div style="color: #e6f7ff; margin-bottom: 15px;">
-        <div style="display: flex; align-items: center; margin: 10px 0;">
-            <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; margin-right: 15px; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);">1</div>
-            <div>
-                <strong style="color: #00ffd0;">About the Prospect</strong>
-                <div style="color: #8892b0; font-size: 0.9rem;">Specific mention of their role, achievement, or background</div>
-            </div>
-        </div>
-        <div style="display: flex; align-items: center; margin: 10px 0;">
-            <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; margin-right: 15px; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);">2</div>
-            <div>
-                <strong style="color: #00b4d8;">Your Value/Intention</strong>
-                <div style="color: #8892b0; font-size: 0.9rem;">How your expertise relates to their field</div>
-            </div>
-        </div>
-        <div style="display: flex; align-items: center; margin: 10px 0;">
-            <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; margin-right: 15px; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);">3</div>
-            <div>
-                <strong style="color: #c8b6ff;">Connection Request</strong>
-                <div style="color: #8892b0; font-size: 0.9rem;">Polite request to connect professionally</div>
-            </div>
-        </div>
-    </div>
-</div>
-''', unsafe_allow_html=True)
+# st.markdown('''
+# <div class="card-3d">
+#     <div style="color: #e6f7ff; margin-bottom: 15px;">
+#         <div style="display: flex; align-items: center; margin: 10px 0;">
+#             <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; margin-right: 15px; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);">1</div>
+#             <div>
+#                 <strong style="color: #00ffd0;">About the Prospect</strong>
+#                 <div style="color: #8892b0; font-size: 0.9rem;">Specific mention of their role, achievement, or background</div>
+#             </div>
+#         </div>
+#         <div style="display: flex; align-items: center; margin: 10px 0;">
+#             <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; margin-right: 15px; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);">2</div>
+#             <div>
+#                 <strong style="color: #00b4d8;">Your Value/Intention</strong>
+#                 <div style="color: #8892b0; font-size: 0.9rem;">How your expertise relates to their field</div>
+#             </div>
+#         </div>
+#         <div style="display: flex; align-items: center; margin: 10px 0;">
+#             <div style="width: 30px; height: 30px; background: linear-gradient(135deg, #00b4d8, #0077b6); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600; margin-right: 15px; box-shadow: 0 4px 15px rgba(0, 180, 216, 0.3);">3</div>
+#             <div>
+#                 <strong style="color: #c8b6ff;">Connection Request</strong>
+#                 <div style="color: #8892b0; font-size: 0.9rem;">Polite request to connect professionally</div>
+#             </div>
+#         </div>
+#     </div>
+# </div>
+# ''', unsafe_allow_html=True)
 
 # --- Sender Configuration Section ---
 st.markdown("---")
