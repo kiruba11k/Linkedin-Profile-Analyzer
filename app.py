@@ -6,7 +6,8 @@ import time
 import random
 
 # ========== API FUNCTIONS ==========
-
+apify_api_key = st.secrets.get("APIFY", "")
+groq_api_key = st.secrets.get("GROQ", "")
 def extract_username_from_url(profile_url: str) -> str:
     """Extract username from LinkedIn URL."""
     if "/in/" in profile_url:
@@ -852,8 +853,7 @@ div[data-testid="stButton"] > button[kind="secondary"]:hover::before {
 # --- Processing Logic ---
 if analyze_clicked and linkedin_url:
     with st.spinner(""):
-        apify_api_key = st.secrets.get("APIFY", "")
-        groq_api_key = st.secrets.get("GROQ", "")
+        
         
         if not apify_api_key or not groq_api_key:
             st.error("API configuration required. Please verify secret keys.")
