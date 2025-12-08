@@ -1143,6 +1143,7 @@ if analyze_prospect_clicked and prospect_linkedin_url and st.session_state.sende
                 
                 st.success("Prospect analysis complete")
                 
+                # Clear existing messages
                 st.session_state.generated_messages = []
                 st.session_state.current_message_index = -1
             else:
@@ -1166,22 +1167,24 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
         
         with col_gen1:
             if st.button(
-                "Generate AI Message", 
-                use_container_width=True,
-                key="generate_message"
-            ):
-                with st.spinner("Creating personalized message..."):
-                    new_message = analyze_and_generate_message(
-                        st.session_state.profile_data,
-                        st.session_state.sender_info,
-                        groq_api_key
-                    )
+            "Generate AI Messages", 
+        use_container_width=True,
+        key="generate_message"
+    ):
+                with st.spinner("Creating 3 personalized message options..."):
+                    messages = analyze_and_generate_message(
+                    st.session_state.profile_data,
+                    st.session_state.sender_info,
+                    groq_api_key
+                )
+            
+                if messages:
+                # Store all 3 messages
+                    for msg in messages:
+                        st.session_state.generated_messages.append(msg)
+                    st.session_state.current_message_index = 0
+                    st.rerun()
                     
-                    if new_message:
-                        st.session_state.generated_messages.append(new_message)
-                        st.session_state.current_message_index = len(st.session_state.generated_messages) - 1
-                        st.rerun()
-        
         with col_gen2:
             if len(st.session_state.generated_messages) > 0:
                 if st.button(
