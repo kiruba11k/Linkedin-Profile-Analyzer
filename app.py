@@ -1326,8 +1326,6 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                                 </div>
                     </div>
                     ''', unsafe_allow_html=True)
-
-        
         else:
             st.markdown('''
             <div class="card-3d" style="text-align: center; padding: 60px 30px;">
