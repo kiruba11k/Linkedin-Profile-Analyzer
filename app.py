@@ -327,11 +327,15 @@ def extract_sender_info_from_apify_data(apify_data: dict) -> dict:
 def analyze_and_generate_message(prospect_data: dict, sender_info: dict, api_key: str, 
                                 user_instructions: str = None, previous_message: str = None) -> str:
     """
-    Generate LinkedIn messages using 3-line structure with both prospect and sender analysis.
+    Generate LinkedIn messages using professional, peer-level tone with strict character limit.
     """
-    # Extract prospect information
+    # Extract prospect information with improved parsing
     prospect_name = "there"
-    prospect_info = []
+    prospect_headline = ""
+    prospect_company = ""
+    prospect_role = ""
+    prospect_about = ""
+    recent_posts = []
     
     try:
         if isinstance(prospect_data, dict):
@@ -341,85 +345,182 @@ def analyze_and_generate_message(prospect_data: dict, sender_info: dict, api_key
             elif prospect_data.get('basic_info') and prospect_data['basic_info'].get('fullname'):
                 prospect_name = prospect_data['basic_info']['fullname'].split()[0]
             
-            # Extract key elements for prospect
+            # Extract headline
             if prospect_data.get('headline'):
-                prospect_info.append(f"Headline: {prospect_data['headline']}")
-            if prospect_data.get('about'):
-                prospect_info.append(f"About: {prospect_data['about'][:300]}")
+                prospect_headline = prospect_data['headline']
+            
+            # Extract current position
             if prospect_data.get('experience'):
                 experiences = prospect_data.get('experience', [])
                 if experiences and len(experiences) > 0:
                     current_exp = experiences[0]
-                    role = current_exp.get('title', '')
-                    company = current_exp.get('company', '')
-                    if role and company:
-                        prospect_info.append(f"Current Position: {role} at {company}")
+                    prospect_role = current_exp.get('title', '')
+                    prospect_company = current_exp.get('company', '')
             
-            prospect_summary = "\n".join(prospect_info)
+            # Extract about section
+            if prospect_data.get('about'):
+                prospect_about = prospect_data['about'][:500]
             
+            # Extract recent posts for hook selection
+            if prospect_data.get('posts') and isinstance(prospect_data['posts'], list):
+                # Filter for relevant posts (last 30 days, professional content)
+                current_time = time.time()
+                one_month_ago = current_time - (30 * 24 * 60 * 60)
+                
+                for post in prospect_data['posts'][:20]:  # Check recent posts
+                    if isinstance(post, dict):
+                        post_time = post.get('published_at', 0)
+                        # Check if post is from last month and not a holiday/festival/hiring post
+                        if post_time >= one_month_ago:
+                            post_text = post.get('text', '').lower()
+                            # Exclude irrelevant posts
+                            exclude_keywords = [
+                                'hiring', 'job', 'vacancy', 'opening', 'position',
+                                'diwali', 'holiday', 'festival', 'greetings',
+                                'congratulations', 'anniversary', 'birthday',
+                                'thank you', 'thanks', 'grateful'
+                            ]
+                            
+                            relevant_keywords = [
+                                'technology', 'digital', 'transformation', 'growth',
+                                'iot', 'logistics', 'supply chain', 'operations',
+                                'infrastructure', 'engineering', 'development',
+                                'innovation', 'strategy', 'business', 'leadership'
+                            ]
+                            
+                            # Check if post contains any relevant keywords AND no exclude keywords
+                            has_relevant = any(keyword in post_text for keyword in relevant_keywords)
+                            has_excluded = any(keyword in post_text for keyword in exclude_keywords)
+                            
+                            if has_relevant and not has_excluded:
+                                recent_posts.append(post)
     except Exception as e:
-        prospect_summary = json.dumps(prospect_data, indent=2)[:1500]
+        # If parsing fails, use fallback
+        pass
     
     # Prepare sender context
-    sender_name = sender_info.get('name', 'Professional Contact').split()[0]
+    sender_name = sender_info.get('name', 'Professional Contact')
+    sender_first_name = sender_name.split()[0] if sender_name else "Professional"
     
-    sender_context = f"Sender Name: {sender_info.get('name', '')}"
-    if sender_info.get('current_role'):
-        sender_context += f"\nSender Role: {sender_info['current_role']}"
-    if sender_info.get('current_company'):
-        sender_context += f"\nSender Company: {sender_info['current_company']}"
-    if sender_info.get('expertise'):
-        sender_context += f"\nSender Expertise: {sender_info['expertise']}"
-    if sender_info.get('professional_summary'):
-        sender_context += f"\nSender Summary: {sender_info['professional_summary']}"
+    sender_role = sender_info.get('current_role', '')
+    sender_company = sender_info.get('current_company', '')
+    sender_expertise = sender_info.get('expertise', '')
+    
+    # Create comprehensive prompt with strict guidelines
+    system_prompt = f'''You are an expert LinkedIn message writer creating personalized connection requests.
+    
+WRITING RULES:
+1. Keep messages under 280 characters (short, crisp, natural)
+2. Avoid flattery, sales tone, or generic compliments
+3. Do not use "—" or dashes between clauses
+4. Use conversational yet mature flow that builds one idea into the next
+5. Never make {sender_first_name} sound curious or learning from the prospect. Sound like a peer with shared expertise
+6. Avoid phrases: "I'm curious about", "I found it fascinating", "It's impressive", "Would be glad to connect", etc.
+
+ACCEPTABLE CLOSING PHRASES:
+- "Let's connect"
+- "Would be great to connect"
+- "I'd love to connect"
+- "Thought it'd be great to connect"
+- "Good to connect and exchange perspectives"
+
+TONE & PERSONALITY:
+- Professional, grounded, and confident
+- Conversational and engaging without sounding casual
+- Reflects mutual respect and professional alignment
+- Every sentence should flow naturally into the next
+
+HOOK SELECTION RULES:
+1. Use only one clear hook per message
+2. If prospect has relevant post from last 30 days about tech/business/strategy, use that
+3. If no relevant posts, use their current role (title + company)
+4. NEVER use: hiring announcements, festival wishes, holiday greetings, event greetings, company culture posts
+5. Hook must be relevant to {sender_first_name}'s domain
+
+MESSAGE STRUCTURE:
+Line 1: Hi [First Name], [Hook statement]
+Line 2: [Connect hook to {sender_first_name}'s expertise naturally]
+Line 3: [Connection request with acceptable closing phrase]
+Best,
+{sender_first_name}
+
+CHARACTER LIMIT: Strictly under 280 characters total.'''
+
+    # Build prospect context
+    prospect_context = f"PROSPECT NAME: {prospect_name}\n"
+    
+    if prospect_headline:
+        prospect_context += f"CURRENT HEADLINE: {prospect_headline}\n"
+    
+    if prospect_role and prospect_company:
+        prospect_context += f"CURRENT ROLE: {prospect_role} at {prospect_company}\n"
+    
+    if prospect_about:
+        prospect_context += f"ABOUT: {prospect_about[:400]}\n"
+    
+    # Add recent relevant posts if available
+    if recent_posts:
+        prospect_context += "\nRECENT RELEVANT POSTS:\n"
+        for i, post in enumerate(recent_posts[:3], 1):
+            post_text = post.get('text', '')[:200]
+            prospect_context += f"Post {i}: {post_text}\n"
+    
+    # Build sender context
+    sender_context = f"SENDER NAME: {sender_name}\n"
+    if sender_role:
+        sender_context += f"SENDER ROLE: {sender_role}\n"
+    if sender_company:
+        sender_context += f"SENDER COMPANY: {sender_company}\n"
+    if sender_expertise:
+        sender_context += f"SENDER EXPERTISE: {sender_expertise}\n"
     
     # Generate message based on mode
     if user_instructions and previous_message:
         # Refinement mode
-        prompt = f'''PROSPECT INFORMATION:
-{prospect_summary}
+        user_prompt = f'''REFINE THIS MESSAGE:
+        
+PROSPECT CONTEXT:
+{prospect_context}
 
-YOUR (SENDER) INFORMATION:
+YOUR (SENDER) CONTEXT:
 {sender_context}
 
-ORIGINAL MESSAGE TO REFINE:
+CURRENT MESSAGE:
 {previous_message}
 
 REFINEMENT INSTRUCTIONS:
 {user_instructions}
 
-Generate a refined LinkedIn connection message with these requirements:
-1. Use exactly 3 content lines
-2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their profile
-3. Line 2: Connect your background/expertise to their field
-4. Line 3: Polite connection request like "Would be glad to connect."
-5. End with "Best, {sender_name}"
-6. Keep under 300 characters total
-7. Use professional, business-appropriate language
-8. Show genuine understanding of their work
-9. Avoid these words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
+Generate 3 refined message options following all the rules above. Each must be under 280 characters.
 
-Generate only the refined message:'''
+IMPORTANT REFINEMENT RULES:
+1. Keep the refined message under 280 characters
+2. Maintain professional, peer-level tone
+3. No flattery or sales language
+4. Ensure logical flow from hook to connection
+5. Use acceptable closing phrases only
+
+Generate 3 options labeled as Option 1, Option 2, Option 3 without any commentary.'''
     else:
         # New generation mode
-        prompt = f'''PROSPECT INFORMATION:
-{prospect_summary}
+        user_prompt = f'''GENERATE NEW CONNECTION MESSAGE:
+        
+PROSPECT CONTEXT:
+{prospect_context}
 
-YOUR (SENDER) INFORMATION:
+YOUR (SENDER) CONTEXT:
 {sender_context}
 
-Generate a LinkedIn connection message with these requirements:
-1. Use exactly 3 content lines
-2. Line 1: Start with "Hi {prospect_name}," then mention something specific about their profile
-3. Line 2: Connect your background/expertise to their field
-4. Line 3: Polite connection request like "Would be glad to connect."
-5. End with "Best, {sender_name}"
-6. Keep under 300 characters total
-7. Use professional, business-appropriate language
-8. Show genuine understanding of their work
-9. Avoid these words: exploring, interested, learning, no easy feat, impressive, noteworthy, remarkable, fascinating, admiring, inspiring, no small feat, no easy task, stood out
+Generate 3 different message options following all the rules above. Each must be under 280 characters.
 
-Generate only the message:'''
+IMPORTANT:
+- Select ONE relevant hook (recent post OR current role)
+- Make connection to {sender_first_name}'s expertise natural and flowing
+- Sound like a peer, not a student or salesperson
+- No flattery words (fascinating, impressive, inspiring, wonderful)
+- Keep it short, crisp, and professional
+
+Generate 3 options labeled as Option 1, Option 2, Option 3 without any commentary.'''
     
     try:
         headers = {
@@ -432,21 +533,12 @@ Generate only the message:'''
             "messages": [
                 {
                     "role": "system", 
-                    "content": f'''You are a professional LinkedIn message writer.
-                    Rules:
-                    - Use exactly 3 content lines
-                    - No flirty or romantic language
-                    - No informal tone
-                    - No generic phrases
-                    - Keep it professional and concise
-                    - Always end with "Best, [First Name]"
-                    - Focus on mutual professional interests
-                    - Show understanding of their specific work'''
+                    "content": system_prompt
                 },
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 350
+            "max_tokens": 800  # Increased for 3 options
         }
         
         response = requests.post(
@@ -457,70 +549,95 @@ Generate only the message:'''
         )
         
         if response.status_code == 200:
-            message = response.json()["choices"][0]["message"]["content"].strip()
+            content = response.json()["choices"][0]["message"]["content"].strip()
             
-            # Clean and validate message
-            message = message.replace('"', '').replace("''", "'").strip()
+            # Parse the 3 options from the response
+            messages = []
+            lines = content.split('\n')
             
-            # Ensure proper greeting
-            if not message.lower().startswith(f"hi {prospect_name.lower()},"):
-                message = f"Hi {prospect_name},\n{message}"
-            
-            # Ensure proper signature
-            if not message.strip().endswith(f"Best, {sender_name}"):
-                message = f"{message.rstrip()}\nBest, {sender_name}"
-            
-            # Check for forbidden content
-            forbidden_phrases = [
-                "beautiful", "attractive", "handsome", "cute", "sexy",
-                "date", "dinner", "coffee date", "romantic", "love",
-                "hot", "gorgeous", "stunning", "hey baby", "hey sexy",
-                "sweetheart", "darling", "honey", "babe", "dear"
-            ]
-            
-            for phrase in forbidden_phrases:
-                if phrase.lower() in message.lower():
-                    # Regenerate with stricter filter
-                    strict_prompt = f'''Regenerate message for {prospect_name}. 
-                    Remove all romantic/flirty language.
-                    Keep strictly professional.
-                    Profile: {prospect_summary[:300]}
-                    Your info: {sender_context[:300]}'''
+            # Extract Option 1, Option 2, Option 3
+            for i in range(1, 4):
+                option_start = None
+                option_end = None
+                
+                # Find Option i
+                for idx, line in enumerate(lines):
+                    if f"Option {i}:" in line or f"Option {i}" in line:
+                        option_start = idx
+                        break
+                
+                if option_start is not None:
+                    # Find where this option ends (either next option or end)
+                    for idx in range(option_start + 1, len(lines)):
+                        if idx < len(lines) - 1 and ("Option " in lines[idx + 1]):
+                            option_end = idx
+                            break
                     
-                    strict_payload = {
-                        "model": "llama-3.1-8b-instant",
-                        "messages": [
-                            {"role": "system", "content": "Strictly professional only. No flirty language."},
-                            {"role": "user", "content": strict_prompt}
-                        ],
-                        "temperature": 0.5,
-                        "max_tokens": 250
-                    }
+                    if option_end is None:
+                        option_end = len(lines) - 1
                     
-                    strict_response = requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers=headers,
-                        json=strict_payload,
-                        timeout=30
-                    )
+                    # Extract the message
+                    option_lines = lines[option_start:option_end + 1]
+                    message_text = '\n'.join(option_lines)
                     
-                    if strict_response.status_code == 200:
-                        message = strict_response.json()["choices"][0]["message"]["content"].strip()
-                        message = f"Hi {prospect_name},\n{message}"
-                        if not message.endswith(f"Best, {sender_name}"):
-                            message = f"{message}\nBest, {sender_name}"
-                    break
+                    # Remove the "Option X:" label
+                    message_text = message_text.replace(f"Option {i}:", "").replace(f"Option {i}", "").strip()
+                    
+                    # Ensure proper greeting
+                    if not message_text.lower().startswith(f"hi {prospect_name.lower()},"):
+                        message_text = f"Hi {prospect_name},\n{message_text}"
+                    
+                    # Ensure proper signature
+                    if not message_text.strip().endswith(f"Best,\n{sender_first_name}"):
+                        message_text = f"{message_text.rstrip()}\nBest,\n{sender_first_name}"
+                    
+                    # Validate character length
+                    if len(message_text) > 280:
+                        # Try to shorten while maintaining structure
+                        lines_msg = message_text.split('\n')
+                        if len(lines_msg) >= 4:  # Hi, line1, line2, Best
+                            # Shorten middle lines
+                            lines_msg[1] = lines_msg[1][:100]
+                            lines_msg[2] = lines_msg[2][:100]
+                            message_text = '\n'.join(lines_msg)
+                    
+                    messages.append(message_text)
             
-            return message
+            # If parsing failed, generate fallback messages
+            if len(messages) < 3:
+                fallback_messages = []
+                for i in range(3):
+                    if i == 0:
+                        hook = f"Saw your work at {prospect_company}" if prospect_company else f"Noticed your experience in {prospect_role}" if prospect_role else "Noticed your professional background"
+                    elif i == 1:
+                        hook = f"Your role in {prospect_role} aligns with" if prospect_role else "Your professional focus aligns with"
+                    else:
+                        hook = f"Your experience at {prospect_company}" if prospect_company else "Your professional journey"
+                    
+                    msg = f"Hi {prospect_name},\n{hook} the evolving landscape of {sender_expertise.split(',')[0] if sender_expertise else 'technology'}.\nAs someone focused on similar transformations, thought it'd be great to connect.\nBest,\n{sender_first_name}"
+                    fallback_messages.append(msg[:280])
+                
+                return fallback_messages[:3]
+            
+            return messages[:3]
             
         else:
-            # Safe fallback
-            return f"Hi {prospect_name},\nYour professional background in your field shows expertise.\nI focus on improvements in similar areas.\nWould be glad to connect.\nBest, {sender_name}"
+            # Safe fallback with 3 options
+            fallback_messages = []
+            for i in range(3):
+                msg = f"Hi {prospect_name},\nYour work at {prospect_company or 'your company'} demonstrates professional expertise.\nI focus on similar business transformations in {sender_expertise.split(',')[0] if sender_expertise else 'related fields'}.\nLet's connect.\nBest,\n{sender_first_name}"
+                fallback_messages.append(msg[:280])
+            
+            return fallback_messages
             
     except Exception as e:
-        # Professional fallback
-        return f"Hi {prospect_name},\nYour experience in your industry demonstrates professional depth.\nI work on business improvements in related fields.\nWould be good to connect.\nBest, {sender_name}"
-
+        # Professional fallback with 3 options
+        fallback_messages = []
+        for i in range(3):
+            msg = f"Hi {prospect_name},\nYour professional background shows depth in your field.\nI work on business improvements in related areas.\nWould be great to connect.\nBest,\n{sender_first_name}"
+            fallback_messages.append(msg[:280])
+        
+        return fallback_messages
 # ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
