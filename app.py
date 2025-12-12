@@ -44,64 +44,101 @@ def start_apify_run(username: str, api_key: str) -> dict:
     except Exception as e:
         st.error(f"Error starting Apify run: {str(e)}")
         return None
-
 def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     """
-    Scrape exactly 2 recent posts from a LinkedIn profile using Apify.
+    Scrape exactly 2 recent posts from a prospect's LinkedIn profile using Apify.
+    Uses YOUR specific actor: apimaestro~linkedin-batch-profile-posts-scraper
     """
     try:
-        # Extract username from profile URL
-        username = extract_username_from_url(profile_url)
+        # Extract prospect's username from their LinkedIn URL
+        prospect_username = extract_username_from_url(profile_url)
         
-        # Use the CORRECT synchronous endpoint for your Actor [citation:1]
-        # The actor ID is: apimaestro~linkedin-batch-profile-posts-scraper
+        # Use YOUR actor endpoint (from your API documentation)
         endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-batch-profile-posts-scraper/run-sync-get-dataset-items"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         
-        # Payload for the CORRECT Apify actor
+        # CRITICAL: Your actor expects "usernames" (plural) as an array
         payload = {
-            "username": username,  # Check the actor's documentation for exact input field name
+            "usernames": [prospect_username],  # Array with the prospect's username
             "max_posts": 2
         }
         
-        # Make the synchronous API call - this will wait for completion [citation:1]
+        # Make the API call
         response = requests.post(
             endpoint,
             headers=headers,
             json=payload,
-            timeout=60
+            timeout=90  # Increased timeout for scraping
         )
         
-        # *** CRITICAL CHANGE: Expect 200 for synchronous success, not 201 ***
+        # Debug: Print raw response to understand structure
+        print(f"DEBUG - Status: {response.status_code}")
+        
         if response.status_code == 200:
             data = response.json()
             
-            # IMPORTANT: You must inspect the actual API response structure
-            # The data might be in a 'data' field or be a direct list
-            if isinstance(data, dict) and 'data' in data:
-                # Structure like: {"data": [...]}
-                items = data['data']
+            # Debug: Print response structure
+            print(f"DEBUG - Response type: {type(data)}")
+            if isinstance(data, dict):
+                print(f"DEBUG - Dict keys: {list(data.keys())}")
             elif isinstance(data, list):
-                # Structure is a direct list: [...]
-                items = data
-            else:
-                # Handle unexpected format
-                st.warning(f"Unexpected response format from posts scraper: {type(data)}")
-                items = []
+                print(f"DEBUG - List length: {len(data)}")
             
-            # Ensure only 2 items are returned
-            return items[:2]
+            # PARSE THE RESPONSE BASED ON YOUR ACTOR'S FORMAT
+            posts = []
             
+            # Option 1: If response is a list of user results
+            if isinstance(data, list) and len(data) > 0:
+                first_user_data = data[0]
+                
+                # Check common field names for posts
+                if isinstance(first_user_data, dict):
+                    if 'posts' in first_user_data:
+                        posts = first_user_data['posts']
+                    elif 'items' in first_user_data:
+                        posts = first_user_data['items']
+                    elif 'data' in first_user_data:
+                        posts = first_user_data['data']
+                    else:
+                        # Try to use the entire dict as a post
+                        posts = [first_user_data]
+            
+            # Option 2: If response is a direct dict with posts
+            elif isinstance(data, dict):
+                if 'posts' in data:
+                    posts = data['posts']
+                elif 'items' in data:
+                    posts = data['items']
+                elif 'data' in data:
+                    posts = data['data']
+            
+            # Filter to get only 2 most recent posts
+            filtered_posts = []
+            for post in posts[:2]:
+                if isinstance(post, dict):
+                    # Ensure post has minimal required data
+                    if 'text' in post or 'content' in post:
+                        filtered_posts.append(post)
+            
+            print(f"DEBUG - Found {len(filtered_posts)} posts")
+            return filtered_posts
+            
+        elif response.status_code == 400:
+            # Handle input errors
+            st.error(f"Invalid input to Apify: {response.text[:200]}")
+            return []
         else:
-            # Log the actual error for debugging
-            st.error(f"Failed to scrape posts. Status: {response.status_code}, Response: {response.text[:200]}")
+            st.error(f"Failed to scrape posts. Status: {response.status_code}")
             return []
             
     except Exception as e:
         st.error(f"Error scraping posts: {str(e)}")
+        # Print detailed traceback for debugging
+        import traceback
+        print(f"DEBUG - Exception details: {traceback.format_exc()}")
         return []
 # After retrieving posts with the function above, filter them:
 def filter_recent_relevant_posts(posts):
