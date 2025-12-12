@@ -44,7 +44,6 @@ def start_apify_run(username: str, api_key: str) -> dict:
     except Exception as e:
         st.error(f"Error starting Apify run: {str(e)}")
         return None
-
 def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     """
     Scrape exactly 2 recent posts from a LinkedIn profile using Apify
