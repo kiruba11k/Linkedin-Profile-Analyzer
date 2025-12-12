@@ -47,117 +47,52 @@ def start_apify_run(username: str, api_key: str) -> dict:
 
 def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     """
-    Scrape exactly 2 recent posts from a single prospect's LinkedIn profile.
-    Uses the synchronous endpoint that waits for completion and returns dataset items.
+    Scrape exactly 2 recent posts from a LinkedIn profile using Apify
+    without filtering — returns raw last 2 posts.
     """
     try:
-        # Extract prospect's username from their LinkedIn URL
-        prospect_username = extract_username_from_url(profile_url)
-        
-        # Use the CORRECT synchronous endpoint for dataset items
-        endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-batch-profile-posts-scraper/run-sync-get-dataset-items"
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        # For batch actor, we need to provide an array of usernames (even for one)
-        payload = {
-            "usernames": [prospect_username],  # Array of usernames (batch style)
-            "max_posts": 2,  # Limit to 2 most recent posts
-            "timeout": 60000  # 60 second timeout
-        }
-        
-        # Make the synchronous API call - waits for completion
-        response = requests.post(
-            endpoint,
-            headers=headers,
-            json=payload,
-            timeout=120  # Longer timeout for scraping
+        # Extract "username" from LinkedIn profile URL
+        username = extract_username_from_url(profile_url)
+
+        # Correct actor endpoint for synchronous dataset output
+        endpoint = (
+            "https://api.apify.com/v2/acts/"
+            "apimaestro~linkedin-batch-profile-posts-scraper/"
+            "run-sync-get-dataset-items?token=" + api_key
         )
-        
-        # Log the response for debugging
-        print(f"DEBUG - API Response Status: {response.status_code}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Add more detailed debugging
-            print(f"DEBUG - Response type: {type(data)}")
-            if isinstance(data, list):
-                print(f"DEBUG - List length: {len(data)}")
-                if data:
-                    print(f"DEBUG - First item keys: {list(data[0].keys()) if isinstance(data[0], dict) else 'Not a dict'}")
-            elif isinstance(data, dict):
-                print(f"DEBUG - Dict keys: {list(data.keys())}")
-            
-            # Parse the response structure
-            posts = []
-            
-            # Option 1: Response is a list where each item represents a user's data
-            if isinstance(data, list) and len(data) > 0:
-                user_data = data[0]  # First user in the batch
-                
-                if isinstance(user_data, dict):
-                    # Check various possible field names for posts
-                    possible_post_fields = ['posts', 'data', 'items', 'activities', 'updates']
-                    
-                    for field in possible_post_fields:
-                        if field in user_data and isinstance(user_data[field], list):
-                            posts = user_data[field]
-                            print(f"DEBUG - Found posts in field: '{field}'")
-                            break
-                    
-                    # If no specific posts field found, the entire dict might be a post
-                    if not posts and user_data:
-                        posts = [user_data]
-            
-            # Option 2: Response is a dict with posts directly
-            elif isinstance(data, dict):
-                if 'posts' in data and isinstance(data['posts'], list):
-                    posts = data['posts']
-            
-            # Filter and validate posts
-            valid_posts = []
-            for post in posts:
-                if isinstance(post, dict):
-                    # Ensure the post has text/content and is recent
-                    post_text = post.get('text') or post.get('content') or post.get('description') or ''
-                    
-                    # Get timestamp if available
-                    timestamp = post.get('timestamp') or post.get('published_at') or post.get('created_at') or 0
-                    
-                    if post_text:  # Only include posts with text content
-                        valid_posts.append({
-                            'text': post_text[:500],  # Limit text length
-                            'timestamp': timestamp,
-                            'url': post.get('url', ''),
-                            'stats': post.get('stats', {}),
-                            'post_type': post.get('post_type', 'regular')
-                        })
-            
-            # Get the 2 most recent posts based on timestamp
-            valid_posts.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
-            top_posts = valid_posts[:2]
-            
-            print(f"DEBUG - Returning {len(top_posts)} valid posts")
-            return top_posts
-            
-        else:
-            error_msg = f"Failed to scrape posts. Status: {response.status_code}"
-            if response.text:
-                error_msg += f", Response: {response.text[:200]}"
-            st.error(error_msg)
+
+        # *** CORRECT INPUT FORMAT FOR THIS ACTOR ***
+        payload = {
+            "profiles": [
+                {"username": username}
+            ],
+            "maxItems": 2   # <-- Only last 2 posts
+        }
+
+        headers = {"Content-Type": "application/json"}
+
+        # Call Apify Actor
+        response = requests.post(endpoint, json=payload, headers=headers, timeout=90)
+
+        if response.status_code != 200:
+            st.error(
+                f"Failed to scrape posts. Status: {response.status_code}, "
+                f"Response: {response.text[:300]}"
+            )
             return []
-            
-    except requests.exceptions.Timeout:
-        st.error("Posts scraping timed out. LinkedIn may be rate limiting.")
-        return []
+
+        # Actor returns DIRECT LIST of items
+        data = response.json()
+
+        if not isinstance(data, list):
+            st.warning("Unexpected response structure from Apify.")
+            return []
+
+        # Already limited to 2, but safety check:
+        return data[:2]
+
     except Exception as e:
         st.error(f"Error scraping posts: {str(e)}")
-        import traceback
-        print(f"DEBUG - Full error: {traceback.format_exc()}")
         return []
 # After retrieving posts with the function above, filter them:
 def filter_recent_relevant_posts(posts):
