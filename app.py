@@ -44,28 +44,30 @@ def start_apify_run(username: str, api_key: str) -> dict:
     except Exception as e:
         st.error(f"Error starting Apify run: {str(e)}")
         return None
+
 def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     """
     Scrape exactly 2 recent posts from a LinkedIn profile using Apify.
     """
     try:
-        # Extract username from profile URL (your existing function)
+        # Extract username from profile URL
         username = extract_username_from_url(profile_url)
         
-        # Prepare the API request for the LinkedIn Posts Scraper
-        endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-profile-posts/run-sync-get-dataset-items"
+        # Use the CORRECT synchronous endpoint for your Actor [citation:1]
+        # The actor ID is: apimaestro~linkedin-batch-profile-posts-scraper
+        endpoint = "https://api.apify.com/v2/acts/apimaestro~linkedin-batch-profile-posts-scraper/run-sync-get-dataset-items"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         
-        # Payload for the specific Apify actor. 'max_posts' is set to 2.
+        # Payload for the CORRECT Apify actor
         payload = {
-            "username": username,
-            "max_posts": 2  # This is the crucial parameter to limit results
+            "username": username,  # Check the actor's documentation for exact input field name
+            "max_posts": 2
         }
         
-        # Make the API call - waits for completion and returns dataset items
+        # Make the synchronous API call - this will wait for completion [citation:1]
         response = requests.post(
             endpoint,
             headers=headers,
@@ -73,18 +75,29 @@ def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
             timeout=60
         )
         
+        # *** CRITICAL CHANGE: Expect 200 for synchronous success, not 201 ***
         if response.status_code == 200:
             data = response.json()
-            # Process the returned data structure
-            if isinstance(data, list):
-                # Return the list of posts (up to 2)
-                return data[:2]  # Ensure only 2 items are returned
+            
+            # IMPORTANT: You must inspect the actual API response structure
+            # The data might be in a 'data' field or be a direct list
+            if isinstance(data, dict) and 'data' in data:
+                # Structure like: {"data": [...]}
+                items = data['data']
+            elif isinstance(data, list):
+                # Structure is a direct list: [...]
+                items = data
             else:
-                # Handle potential different response structures
-                st.warning("Posts scraper returned an unexpected data format.")
-                return []
+                # Handle unexpected format
+                st.warning(f"Unexpected response format from posts scraper: {type(data)}")
+                items = []
+            
+            # Ensure only 2 items are returned
+            return items[:2]
+            
         else:
-            st.error(f"Failed to scrape posts. Status: {response.status_code}")
+            # Log the actual error for debugging
+            st.error(f"Failed to scrape posts. Status: {response.status_code}, Response: {response.text[:200]}")
             return []
             
     except Exception as e:
