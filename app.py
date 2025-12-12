@@ -44,55 +44,56 @@ def start_apify_run(username: str, api_key: str) -> dict:
     except Exception as e:
         st.error(f"Error starting Apify run: {str(e)}")
         return None
+
+import requests
+import streamlit as st
+
 def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     """
-    Scrape exactly 2 recent posts from a LinkedIn profile using Apify
-    without filtering — returns raw last 2 posts.
+    Scrape EXACT last 2 posts using Apify (no filtering).
+    Works with input:
+        { "includeEmail": false, "username": "<full_profile_url>" }
     """
     try:
-        # Extract "username" from LinkedIn profile URL
-        username = extract_username_from_url(profile_url)
-
-        # Correct actor endpoint for synchronous dataset output
+        # The actor requires FULL profile URL, not username only
+        username = profile_url.strip()   # do NOT extract username
+        
         endpoint = (
             "https://api.apify.com/v2/acts/"
             "apimaestro~linkedin-batch-profile-posts-scraper/"
             "run-sync-get-dataset-items?token=" + api_key
         )
 
-        # *** CORRECT INPUT FORMAT FOR THIS ACTOR ***
+        # EXACT input schema required by your Actor
         payload = {
-            "profiles": [
-                {"username": username}
-            ],
-            "maxItems": 2   # <-- Only last 2 posts
+            "includeEmail": False,
+            "username": username
         }
 
         headers = {"Content-Type": "application/json"}
 
-        # Call Apify Actor
         response = requests.post(endpoint, json=payload, headers=headers, timeout=90)
 
         if response.status_code != 200:
             st.error(
-                f"Failed to scrape posts. Status: {response.status_code}, "
-                f"Response: {response.text[:300]}"
+                f"Failed. Status: {response.status_code}, Response: {response.text[:500]}"
             )
             return []
 
-        # Actor returns DIRECT LIST of items
+        # Actor ALWAYS returns a list of posts in dataset-items
         data = response.json()
 
         if not isinstance(data, list):
-            st.warning("Unexpected response structure from Apify.")
+            st.warning("Unexpected response format from Apify.")
             return []
 
-        # Already limited to 2, but safety check:
+        # Return only the last 2 posts
         return data[:2]
 
     except Exception as e:
         st.error(f"Error scraping posts: {str(e)}")
         return []
+
 # After retrieving posts with the function above, filter them:
 def filter_recent_relevant_posts(posts):
     """
