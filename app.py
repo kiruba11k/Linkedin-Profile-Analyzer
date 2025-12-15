@@ -406,221 +406,86 @@ def extract_sender_info_from_apify_data(apify_data: dict) -> dict:
         pass
     
     return sender_info
+    
 def analyze_and_generate_message(prospect_data: dict, sender_info: dict, api_key: str, 
                                 user_instructions: str = None, previous_message: str = None) -> list:
     """
-    Generate LinkedIn messages with 250-300 character limit and proper formatting.
+    Optimized version: Generate LinkedIn messages with 250-300 character limit.
     Returns list of 3 complete message options.
     """
-    # Extract prospect information
-    prospect_name = "there"
-    prospect_headline = ""
-    prospect_company = ""
-    prospect_role = ""
-    prospect_about = ""
-    recent_posts = []
-    
     try:
+        # 1. SIMPLIFIED PROSPECT DATA EXTRACTION
+        prospect_name = "there"
+        prospect_headline = ""
+        prospect_company = ""
+        prospect_role = ""
+        
         if isinstance(prospect_data, dict):
-            # Extract prospect name
+            # Extract name (simplified)
             if prospect_data.get('fullname'):
-                fullname = prospect_data.get('fullname')
-                prospect_name = fullname.split()[0] if fullname else "there"
+                name_parts = prospect_data['fullname'].split()
+                prospect_name = name_parts[0] if name_parts else "there"
             elif prospect_data.get('basic_info') and prospect_data['basic_info'].get('fullname'):
-                fullname = prospect_data['basic_info']['fullname']
-                prospect_name = fullname.split()[0] if fullname else "there"
-            
-            # Extract headline
-            if prospect_data.get('headline'):
-                prospect_headline = prospect_data['headline'][:200]
+                name_parts = prospect_data['basic_info']['fullname'].split()
+                prospect_name = name_parts[0] if name_parts else "there"
             
             # Extract current position
             if prospect_data.get('experience'):
                 experiences = prospect_data.get('experience', [])
                 if experiences and len(experiences) > 0:
                     current_exp = experiences[0]
-                    prospect_role = current_exp.get('title', '')[:100]
-                    prospect_company = current_exp.get('company', '')[:100]
+                    prospect_role = current_exp.get('title', '')[:80]
+                    prospect_company = current_exp.get('company', '')[:80]
             
-            # Extract about section
-            if prospect_data.get('about'):
-                prospect_about = prospect_data['about'][:400]
-            
-            # Extract recent posts for hook selection
-            if prospect_data.get('posts') and isinstance(prospect_data['posts'], list):
-                current_time = time.time()
-                one_month_ago = current_time - (30 * 24 * 60 * 60)
-                
-                for post in prospect_data['posts'][:15]:
-                    if isinstance(post, dict):
-                        post_time = post.get('published_at', 0)
-                        if post_time >= one_month_ago:
-                            post_text = post.get('text', '').lower()
-                            
-                            # Exclude irrelevant posts
-                            exclude_keywords = [
-                                'hiring', 'job', 'vacancy', 'opening', 'position',
-                                'diwali', 'holiday', 'festival', 'greetings',
-                                'congratulations', 'anniversary', 'birthday',
-                                'thank you', 'thanks', 'grateful', 'celebrating',
-                                'party', 'event', 'webinar', 'seminar'
-                            ]
-                            
-                            # Include relevant professional keywords
-                            include_keywords = [
-                                'technology', 'digital', 'transformation', 'growth',
-                                'iot', 'logistics', 'supply chain', 'operations',
-                                'infrastructure', 'engineering', 'development',
-                                'innovation', 'strategy', 'business', 'leadership',
-                                'project', 'initiative', 'launch', 'expansion',
-                                'partnership', 'collaboration', 'solution',
-                                'optimization', 'efficiency', 'product'
-                            ]
-                            
-                            has_excluded = any(keyword in post_text for keyword in exclude_keywords)
-                            has_included = any(keyword in post_text for keyword in include_keywords)
-                            
-                            if has_included and not has_excluded:
-                                recent_posts.append(post)
-    except Exception as e:
-        # Use fallback if parsing fails
-        pass
+            # Extract headline
+            if prospect_data.get('headline'):
+                prospect_headline = prospect_data['headline'][:150]
     
-    # Prepare sender context
-    sender_name = sender_info.get('name', 'Professional Contact')
-    sender_first_name = sender_name.split()[0] if sender_name else "Professional"
-    
-    sender_role = sender_info.get('current_role', '')[:150]
-    sender_company = sender_info.get('current_company', '')[:100]
-    sender_expertise = sender_info.get('expertise', '')[:200]
-    
-    # Create comprehensive prompt
-    system_prompt = f'''You are an expert LinkedIn message writer creating personalized connection requests.
-
-WRITING RULES:
-1. Keep messages between 250 and 300 characters (including spaces and line breaks)
-2. Messages MUST be complete sentences - never cut off mid-word or mid-sentence
-3. Avoid flattery, sales tone, or generic compliments
-4. Do not use "—" or dashes between clauses
-5. Use conversational yet mature flow that builds one idea into the next
-6. Never make {sender_first_name} sound curious or learning from the prospect. Sound like a peer with shared expertise
-7. Avoid phrases: "I'm curious about", "I found it fascinating", "It's impressive", "Would be glad to connect", etc.
-
-ACCEPTABLE CLOSING PHRASES:
-- "Let's connect"
-- "Would be great to connect"
-- "I'd love to connect"
-- "Thought it'd be great to connect"
-- "Good to connect and exchange perspectives"
-
-TONE & PERSONALITY:
-- Professional, grounded, and confident
-- Conversational and engaging without sounding casual
-- Reflects mutual respect and professional alignment
-- Every sentence should flow naturally into the next
-
-HOOK SELECTION RULES:
-1. Use only one clear hook per message
-2. If prospect has relevant post from last 30 days about tech/business/strategy, use that
-3. If no relevant posts, use their current role (title + company)
-4. NEVER use: hiring announcements, festival wishes, holiday greetings, event greetings
-5. Hook must be relevant to {sender_first_name}'s domain
-
-MESSAGE STRUCTURE:
-Line 1: Hi [First Name], [Hook statement - specific and relevant]
-Line 2: [Connect hook to {sender_first_name}'s expertise naturally - show peer-level alignment]
-Line 3: [Connection request with acceptable closing phrase]
-Best,
-{sender_first_name}
-
-CHARACTER LIMIT: Strictly between 250 and 300 characters total. Ensure message is complete and doesn't cut off.'''
-
-    # Build prospect context
-    prospect_context = f"PROSPECT NAME: {prospect_name}\n"
-    
-    if prospect_headline:
-        prospect_context += f"CURRENT HEADLINE: {prospect_headline}\n"
-    
-    if prospect_role and prospect_company:
-        prospect_context += f"CURRENT ROLE: {prospect_role} at {prospect_company}\n"
-    elif prospect_role:
-        prospect_context += f"CURRENT ROLE: {prospect_role}\n"
-    elif prospect_company:
-        prospect_context += f"CURRENT COMPANY: {prospect_company}\n"
-    
-    if prospect_about:
-        prospect_context += f"ABOUT: {prospect_about}\n"
-    
-    # Add recent relevant posts if available
-    if recent_posts:
-        prospect_context += "\nRECENT RELEVANT POSTS (use as hook if appropriate):\n"
-        for i, post in enumerate(recent_posts[:3], 1):
-            post_text = post.get('text', '')[:300]
-            prospect_context += f"Post {i}: {post_text}\n"
-    
-    # Build sender context
-    sender_context = f"SENDER NAME: {sender_name}\n"
-    if sender_role:
-        sender_context += f"SENDER ROLE: {sender_role}\n"
-    if sender_company:
-        sender_context += f"SENDER COMPANY: {sender_company}\n"
-    if sender_expertise:
-        sender_context += f"SENDER EXPERTISE: {sender_expertise}\n"
-    
-    # Generate message based on mode
-    if user_instructions and previous_message:
-        # Refinement mode - ensure previous message is complete
-        if previous_message and "..." in previous_message:
-            previous_message = previous_message.replace("...", "").strip()
+        # 2. SIMPLIFIED SENDER DATA EXTRACTION
+        sender_name = sender_info.get('name', 'Professional Contact')
+        sender_first_name = sender_name.split()[0] if sender_name else "Professional"
+        sender_role = sender_info.get('current_role', '')[:100]
+        sender_company = sender_info.get('current_company', '')[:80]
         
-        user_prompt = f'''REFINE THIS MESSAGE (make sure it's complete, 250-300 characters):
+        # 3. OPTIMIZED PROMPT WITH CLEARER INSTRUCTIONS
+        system_prompt = f'''You are an expert LinkedIn message writer. Generate 3 different connection requests.
 
-PROSPECT CONTEXT:
-{prospect_context}
+RULES:
+1. Each message MUST be exactly 250-300 characters
+2. Complete sentences only - never cut off
+3. Format: Hi [First Name], [hook] + [value alignment] + [connection request]
+4. Hook: Use role/company or recent professional post (no hiring/festival posts)
+5. Sound like a peer, not a student
+6. No flattery words (fascinating, impressive, etc.)
 
-YOUR (SENDER) CONTEXT:
-{sender_context}
+PROSPECT:
+Name: {prospect_name}
+Role: {prospect_role or 'Not specified'}
+Company: {prospect_company or 'Not specified'}
 
-CURRENT MESSAGE (to refine):
-{previous_message}
+YOU (Sender):
+Name: {sender_first_name}
+Role: {sender_role or 'Professional'}
+Company: {sender_company or 'Your company'}
 
-REFINEMENT INSTRUCTIONS:
-{user_instructions}
+Generate 3 different message options. Each must be complete and 250-300 characters.
 
-Generate 3 refined message options following all the rules above. 
-CRITICAL: Each message MUST be between 250-300 characters and COMPLETE (no cut-off text).
-Count characters and ensure the message ends properly.
+FORMAT EXACTLY:
+Option 1: [250-300 character message]
+Option 2: [250-300 character message]
+Option 3: [250-300 character message]'''
+        
+        # 4. SIMPLIFIED USER PROMPT BASED ON MODE
+        if user_instructions and previous_message:
+            user_prompt = f'''Refine this message based on: {user_instructions}
 
-Format as:
-Option 1: [Complete message 250-300 chars]
-Option 2: [Complete message 250-300 chars]
-Option 3: [Complete message 250-300 chars]'''
-    else:
-        # New generation mode
-        user_prompt = f'''GENERATE 3 CONNECTION MESSAGES (250-300 characters each):
+Current message to refine: {previous_message[:200]}
 
-PROSPECT CONTEXT:
-{prospect_context}
-
-YOUR (SENDER) CONTEXT:
-{sender_context}
-
-Generate 3 different message options following all rules above.
-
-CRITICAL REQUIREMENTS:
-1. Each message MUST be 250-300 characters (count them!)
-2. Messages must be COMPLETE - no cut-off words or sentences
-3. Select ONE relevant hook per message (recent post OR current role)
-4. Sound like a peer, not a student or salesperson
-5. No flattery words (fascinating, impressive, inspiring, wonderful)
-6. Ensure logical flow from hook to connection
-
-Format as:
-Option 1: [Complete message]
-Option 2: [Complete message]
-Option 3: [Complete message]'''
-    
-    try:
+Generate 3 refined versions, each 250-300 characters.'''
+        else:
+            user_prompt = f'''Generate 3 connection messages following all rules above.'''
+        
+        # 5. API CALL WITH REDUCED TOKENS
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -629,174 +494,87 @@ Option 3: [Complete message]'''
         payload = {
             "model": "llama-3.1-8b-instant",
             "messages": [
-                {
-                    "role": "system", 
-                    "content": system_prompt
-                },
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.7,
-            "max_tokens": 1500,  # Increased for 3 complete messages
-            "response_format": {"type": "text"}
+            "max_tokens": 1000,  # Reduced from 1500
+            "stream": False
         }
         
+        # 6. FASTER PARSING LOGIC
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=45
+            timeout=30  # Reduced timeout
         )
         
-        if response.status_code == 200:
-            content = response.json()["choices"][0]["message"]["content"].strip()
-            
-            # Parse the 3 options from the response
-            messages = []
-            lines = content.split('\n')
-            
-            # Extract Option 1, Option 2, Option 3
-            current_option = None
-            current_message = []
-            
-            for line in lines:
-                line = line.strip()
-                
-                # Check for option headers
-                if line.lower().startswith('option 1:') or line.lower().startswith('option1:'):
-                    if current_option is not None and current_message:
-                        messages.append('\n'.join(current_message))
-                    current_option = 1
-                    current_message = [line.replace('Option 1:', '').replace('option1:', '').strip()]
-                elif line.lower().startswith('option 2:') or line.lower().startswith('option2:'):
-                    if current_option is not None and current_message:
-                        messages.append('\n'.join(current_message))
-                    current_option = 2
-                    current_message = [line.replace('Option 2:', '').replace('option2:', '').strip()]
-                elif line.lower().startswith('option 3:') or line.lower().startswith('option3:'):
-                    if current_option is not None and current_message:
-                        messages.append('\n'.join(current_message))
-                    current_option = 3
-                    current_message = [line.replace('Option 3:', '').replace('option3:', '').strip()]
-                elif current_option is not None and line and not line.lower().startswith('option'):
-                    current_message.append(line)
-            
-            # Add the last message
-            if current_message:
-                messages.append('\n'.join(current_message))
-            
-            # Clean and validate messages
-            validated_messages = []
-            for msg in messages:
-                if msg:
-                    # Ensure proper greeting
-                    if not msg.lower().startswith(f"hi {prospect_name.lower()},"):
-                        msg = f"Hi {prospect_name},\n{msg}"
-                    
-                    # Ensure proper signature
-                    if not msg.strip().endswith(f"Best,\n{sender_first_name}"):
-                        # Remove any trailing incomplete text
-                        msg = msg.rstrip()
-                        if msg.endswith(('...', '..', '.')):
-                            msg = msg.rstrip('.')
-                        msg = f"{msg}\nBest,\n{sender_first_name}"
-                    
-                    # Check character length
-                    msg_length = len(msg)
-                    
-                    if msg_length < 250:
-                        # If too short, add more context
-                        # Find where to add more content (after first line)
-                        lines_msg = msg.split('\n')
-                        if len(lines_msg) >= 3:
-                            # Add more detail to second line
-                            lines_msg[2] = f"{lines_msg[2]} I focus on similar business transformations."
-                            msg = '\n'.join(lines_msg)
-                    
-                    elif msg_length > 300:
-                        # If too long, shorten intelligently
-                        # Remove any incomplete endings first
-                        msg = msg.rstrip()
-                        if '...' in msg:
-                            msg = msg.split('...')[0].strip()
-                        
-                        # Shorten the middle part (content lines)
-                        lines_msg = msg.split('\n')
-                        if len(lines_msg) >= 4:
-                            # Shorten content lines but keep structure
-                            for i in range(1, len(lines_msg) - 1):
-                                if len(lines_msg[i]) > 100:
-                                    # Shorten at sentence boundary
-                                    if '.' in lines_msg[i]:
-                                        sentences = lines_msg[i].split('.')
-                                        if len(sentences) > 1:
-                                            lines_msg[i] = sentences[0].strip() + '.'
-                                        else:
-                                            lines_msg[i] = lines_msg[i][:95] + '...'
-                                    else:
-                                        lines_msg[i] = lines_msg[i][:95] + '...'
-                            
-                            msg = '\n'.join(lines_msg)
-                    
-                    # Final character count check
-                    if 250 <= len(msg) <= 300:
-                        validated_messages.append(msg)
-                    else:
-                        # Create fallback message
-                        fallback = f"Hi {prospect_name},\nYour work at {prospect_company or 'your company'} shows professional depth in {prospect_role or 'your field'}.\nAs someone focused on similar business improvements, thought it'd be great to connect.\nBest,\n{sender_first_name}"
-                        if 250 <= len(fallback) <= 300:
-                            validated_messages.append(fallback)
-            
-            # Ensure we have 3 messages
-            while len(validated_messages) < 3:
-                fallback_template = [
-                    f"Hi {prospect_name},\nYour role in {prospect_role or 'your field'} demonstrates expertise in professional growth.\nI focus on similar advancements in business technology - would be great to connect.\nBest,\n{sender_first_name}",
-                    f"Hi {prospect_name},\nYour experience at {prospect_company or 'your organization'} aligns with evolving business landscapes.\nWorking on similar transformations makes me think we should connect.\nBest,\n{sender_first_name}",
-                    f"Hi {prospect_name},\nYour professional journey shows commitment to excellence in {prospect_role or 'your domain'}.\nGiven our shared focus on business improvement, let's connect.\nBest,\n{sender_first_name}"
-                ]
-                
-                for template in fallback_template:
-                    if len(validated_messages) < 3 and 250 <= len(template) <= 300:
-                        validated_messages.append(template)
-            
-            return validated_messages[:3]
-            
-        else:
-            # Create 3 fallback messages within character limits
-            fallback_messages = [
-                f"Hi {prospect_name},\nYour professional background in {prospect_role or 'your field'} demonstrates expertise.\nI work on similar business transformations and thought it'd be great to connect.\nBest,\n{sender_first_name}",
-                f"Hi {prospect_name},\nYour experience at {prospect_company or 'your organization'} shows commitment to growth.\nFocusing on similar improvements makes me think we should connect.\nBest,\n{sender_first_name}",
-                f"Hi {prospect_name},\nYour work in {prospect_role or 'your domain'} aligns with business evolution.\nGiven our shared professional interests, let's connect and exchange perspectives.\nBest,\n{sender_first_name}"
-            ]
-            
-            # Ensure character limits
-            for i, msg in enumerate(fallback_messages):
-                if len(msg) > 300:
-                    fallback_messages[i] = msg[:297] + "..."
-                elif len(msg) < 250:
-                    fallback_messages[i] = msg + " I focus on driving meaningful change in similar environments."
-            
-            return fallback_messages[:3]
-            
+        if response.status_code != 200:
+            # Return simple fallback messages faster
+            return generate_fallback_messages(prospect_name, sender_first_name, 
+                                            prospect_role, prospect_company)
+        
+        content = response.json()["choices"][0]["message"]["content"].strip()
+        
+        # 7. OPTIMIZED PARSING
+        messages = []
+        lines = content.split('\n')
+        
+        for line in lines:
+            line_lower = line.lower()
+            if line_lower.startswith('option 1:') or line_lower.startswith('option1:'):
+                msg = line.split(':', 1)[1].strip()
+                messages.append(format_message(msg, prospect_name, sender_first_name))
+            elif line_lower.startswith('option 2:') or line_lower.startswith('option2:'):
+                msg = line.split(':', 1)[1].strip()
+                messages.append(format_message(msg, prospect_name, sender_first_name))
+            elif line_lower.startswith('option 3:') or line_lower.startswith('option3:'):
+                msg = line.split(':', 1)[1].strip()
+                messages.append(format_message(msg, prospect_name, sender_first_name))
+        
+        # 8. FILL IN MISSING MESSAGES QUICKLY
+        if len(messages) < 3:
+            fallbacks = generate_fallback_messages(prospect_name, sender_first_name,
+                                                 prospect_role, prospect_company)
+            while len(messages) < 3:
+                messages.append(fallbacks[len(messages)])
+        
+        return messages[:3]
+        
     except Exception as e:
-        # Create 3 professional fallback messages
-        fallback_messages = []
-        
-        templates = [
-            f"Hi {prospect_name},\nYour professional journey shows dedication to excellence in your field.\nWorking on similar business transformations makes me think we should connect.\nBest,\n{sender_first_name}",
-            f"Hi {prospect_name},\nYour experience demonstrates expertise in professional growth and development.\nGiven our shared focus on business improvement, would be great to connect.\nBest,\n{sender_first_name}",
-            f"Hi {prospect_name},\nYour background aligns with evolving business landscapes and opportunities.\nFocusing on similar advancements, let's connect and exchange perspectives.\nBest,\n{sender_first_name}"
-        ]
-        
-        for template in templates:
-            if 250 <= len(template) <= 300:
-                fallback_messages.append(template)
-            elif len(template) > 300:
-                fallback_messages.append(template[:297] + "...")
-            else:
-                fallback_messages.append(template + " Our shared professional interests make this connection valuable.")
-        
-        return fallback_messages[:3]
+        # Fast fallback
+        return generate_fallback_messages(
+            prospect_name, 
+            sender_first_name,
+            prospect_role,
+            prospect_company
+        )
 
+def format_message(message: str, prospect_name: str, sender_first_name: str) -> str:
+    """Quick formatting helper"""
+    if not message.lower().startswith(f"hi {prospect_name.lower()},"):
+        message = f"Hi {prospect_name},\n{message}"
+    
+    if not message.strip().endswith(f"Best,\n{sender_first_name}"):
+        # Ensure message ends properly
+        message = message.rstrip(' .')
+        if not message.endswith('.'):
+            message = f"{message}."
+        message = f"{message}\nBest,\n{sender_first_name}"
+    
+    return message
+
+def generate_fallback_messages(prospect_name: str, sender_first_name: str, 
+                             prospect_role: str, prospect_company: str) -> list:
+    """Generate fast fallback messages"""
+    base_messages = [
+        f"Hi {prospect_name},\nYour experience in {prospect_role or 'your field'} demonstrates professional expertise.\nI focus on similar business improvements - would be great to connect.\nBest,\n{sender_first_name}",
+        f"Hi {prospect_name},\nYour role at {prospect_company or 'your company'} shows commitment to professional growth.\nWorking on similar transformations makes me think we should connect.\nBest,\n{sender_first_name}",
+        f"Hi {prospect_name},\nYour professional journey aligns with evolving business opportunities.\nGiven our shared focus on improvement, let's connect and exchange perspectives.\nBest,\n{sender_first_name}"
+    ]
+    
+    return base_messages
 # ========== STREAMLIT APPLICATION ==========
 
 st.set_page_config(
@@ -1320,7 +1098,11 @@ if analyze_prospect_clicked and prospect_linkedin_url and st.session_state.sende
             else:
                 st.session_state.processing_status = "Error"
                 st.error("Failed to analyze prospect profile.")
-                
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_generate_research_brief(profile_data: dict, api_key: str) -> str:
+    """Cached version of research brief generation"""
+    return generate_research_brief(profile_data, api_key)
 # --- Results Display ---
 if st.session_state.profile_data and st.session_state.research_brief and st.session_state.sender_info:
     st.markdown("---")
@@ -1337,31 +1119,32 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
         col_gen1, col_gen2 = st.columns([2, 1])
         
         with col_gen1:
-            if st.button(
-    "Generate AI Messages", 
-    use_container_width=True,
-    key="generate_message"
-):
-                with st.spinner("Creating 3 personalized message options..."):
-                    # Clear existing messages first
-                    st.session_state.generated_messages = []
-                    
+            if st.button("Generate AI Messages", use_container_width=True, key="generate_message"):
+                with st.spinner("Creating personalized messages..."):
+        # Add a progress bar
+                    progress_bar = st.progress(0)
+        
+        # Generate messages with progress updates
                     messages = analyze_and_generate_message(
                         st.session_state.profile_data,
-                        st.session_state.sender_info,
-                        groq_api_key
-                    )
-                    
+            st.session_state.sender_info,
+            groq_api_key
+        )
+        
+                    progress_bar.progress(100)
+        
                     if messages:
-                        # Store all 3 messages
+                        st.session_state.generated_messages = []
                         for i, msg in enumerate(messages):
                             st.session_state.generated_messages.append({
-                                "text": msg,
-                                "char_count": len(msg),
-                                "option": i + 1
-                            })
+                    "text": msg,
+                    "char_count": len(msg),
+                    "option": i + 1
+                })
                         st.session_state.current_message_index = 0
-                        st.rerun()        
+                        st.rerun()
+            
+            
         with col_gen2:
             if len(st.session_state.generated_messages) > 0:
                 if st.button(
