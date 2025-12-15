@@ -50,51 +50,50 @@ import streamlit as st
 
 def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     """
-    Scrape EXACT last 2 posts using Apify (no filtering).
-    Works with input:
-        { "includeEmail": false, "username": "<full_profile_url>" }
+    Scrape last 2 posts from a LinkedIn profile using Apify actor.
+    No filtering. Only posts by that user.
     """
     try:
-        # The actor requires FULL profile URL, not username only
-        username = profile_url.strip()   # do NOT extract username
-        
         endpoint = (
             "https://api.apify.com/v2/acts/"
             "apimaestro~linkedin-batch-profile-posts-scraper/"
             "run-sync-get-dataset-items?token=" + api_key
         )
 
-        # EXACT input schema required by your Actor
+        # ✅ EXACT INPUT REQUIRED BY ACTOR
         payload = {
             "includeEmail": False,
-            "username": username
+            "usernames": [profile_url.strip()]  # MUST be a list
         }
 
         headers = {"Content-Type": "application/json"}
 
-        response = requests.post(endpoint, json=payload, headers=headers, timeout=90)
+        response = requests.post(
+            endpoint,
+            json=payload,
+            headers=headers,
+            timeout=90
+        )
 
         if response.status_code != 200:
             st.error(
-                f"Failed. Status: {response.status_code}, Response: {response.text[:500]}"
+                f"Failed. Status: {response.status_code}, "
+                f"Response: {response.text[:500]}"
             )
             return []
 
-        # Actor ALWAYS returns a list of posts in dataset-items
         data = response.json()
 
         if not isinstance(data, list):
-            st.warning("Unexpected response format from Apify.")
+            st.warning("Unexpected response structure from Apify.")
             return []
 
-        # Return only the last 2 posts
+        #  Return only last 2 posts
         return data[:2]
 
     except Exception as e:
         st.error(f"Error scraping posts: {str(e)}")
         return []
-        
-
 # After retrieving posts with the function above, filter them:
 def filter_recent_relevant_posts(posts):
     """
