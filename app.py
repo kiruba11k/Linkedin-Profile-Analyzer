@@ -75,7 +75,7 @@ def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
             timeout=90
         )
 
-        if (response.status_code != 200,201):
+        if response.status_code not in (200,201):
             st.error(
                 f"Failed. Status: {response.status_code}, "
                 f"Response: {response.text[:500]}"
