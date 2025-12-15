@@ -93,6 +93,7 @@ def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
     except Exception as e:
         st.error(f"Error scraping posts: {str(e)}")
         return []
+        
 
 # After retrieving posts with the function above, filter them:
 def filter_recent_relevant_posts(posts):
