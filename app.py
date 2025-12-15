@@ -60,7 +60,7 @@ def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
             "run-sync-get-dataset-items?token=" + api_key
         )
 
-        # ✅ EXACT INPUT REQUIRED BY ACTOR
+        #  EXACT INPUT REQUIRED BY ACTOR
         payload = {
             "includeEmail": False,
             "usernames": [profile_url.strip()]  # MUST be a list
@@ -75,7 +75,7 @@ def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
             timeout=90
         )
 
-        if response.status_code != 200:
+        if (response.status_code != 200,201):
             st.error(
                 f"Failed. Status: {response.status_code}, "
                 f"Response: {response.text[:500]}"
