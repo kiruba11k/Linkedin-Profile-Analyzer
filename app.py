@@ -97,37 +97,31 @@ def scrape_linkedin_posts(profile_url: str, api_key: str) -> list:
 # After retrieving posts with the function above, filter them:
 def filter_recent_relevant_posts(posts):
     """
-    Filter posts to ensure they are recent and professional.
+    Simplified Filter: Removes junk (hiring/holidays) but keeps 
+    everything else regardless of date or keywords.
     """
-    current_time = time.time()
-    one_month_ago = current_time - (30 * 24 * 60 * 60)
+    if not posts:
+        return []
+
     filtered_posts = []
-    
-    # Keywords to exclude and include
-    exclude_keywords = ['hiring', 'job', 'diwali', 'holiday', 'festival', 'birthday']
-    include_keywords = ['technology', 'digital', 'growth', 'project', 'strategy']
+    # Only exclude posts that wouldn't make a good professional hook
+    exclude_keywords = ['hiring', 'job', 'diwali', 'holiday', 'festival', 'birthday', 'anniversary']
     
     for post in posts:
         if not isinstance(post, dict):
             continue
             
-        # Get post text and timestamp
         post_text = post.get('text', '').lower()
-        post_time = post.get('timestamp', 0)  # Adjust key based on actual response
         
-        # Check recency (if timestamp is available)
-        if post_time < one_month_ago:
-            continue  # Skip old posts
-            
-        # Check content
+        # Check if it contains junk keywords
         has_excluded = any(keyword in post_text for keyword in exclude_keywords)
-        has_included = any(keyword in post_text for keyword in include_keywords)
         
-        if not has_excluded and has_included:
+        # If it's not a "junk" post, keep it
+        if not has_excluded:
             filtered_posts.append(post)
     
-    return filtered_posts
-
+    # Return the 2 most recent posts available
+    return filtered_posts[:2]
 def poll_apify_run_with_status(run_id: str, dataset_id: str, api_key: str) -> dict:
     """
     Poll the Apify run with proper status updates.
