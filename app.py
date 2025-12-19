@@ -1248,42 +1248,38 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                         st.rerun()
             
             # Message History
+
             if len(st.session_state.generated_messages) > 1:
-                st.markdown("---")
-                st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
+            st.markdown("---")
+            st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
     
-                for idx, msg_obj in enumerate(st.session_state.generated_messages):
-                    is_active = idx == st.session_state.current_message_index
-                    border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
-                    bg_color = "rgba(0, 180, 216, 0.05)" if is_active else "rgba(255, 255, 255, 0.02)"
+            for idx, msg_obj in enumerate(st.session_state.generated_messages):
+                is_active = idx == st.session_state.current_message_index
         
-        # Safe extraction to prevent AttributeError
-                    full_text = msg_obj.get("text", "") if isinstance(msg_obj, dict) else str(msg_obj)
-                    refinement = msg_obj.get("refinement_used", None) if isinstance(msg_obj, dict) else None
+        # UI Styling
+                border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
+                bg_color = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
         
-                    preview_lines = full_text.split('\n')
-                    preview = preview_lines[1] if len(preview_lines) > 1 else full_text[:80]
+        # Data Extraction
+                text = msg_obj.get("text", "") if isinstance(msg_obj, dict) else str(msg_obj)
+                ref_prompt = msg_obj.get("refinement_used", None) if isinstance(msg_obj, dict) else None
         
-        # History Card UI
-                    st.markdown(f'''<div style="
-            background: {bg_color};
-            padding: 18px;
-            border-radius: 16px;
-            margin: 10px 0;
-            border: 1px solid {border_color};">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <span style="color: #e6f7ff; font-weight: 600;">Version {idx + 1}</span>
-                    <span style="color: #8892b0; font-size: 0.8rem;">{len(full_text)} chars</span>
-                    {f'<span style="background: rgba(200, 182, 255, 0.2); color: #c8b6ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem;">Refined</span>' if refinement else ''}</div>
-                {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.8rem;">Viewing Now</span>' if is_active else ''}
+                st.markdown(f'''
+        <div style="background: {bg_color}; padding: 20px; border-radius: 16px; margin: 12px 0; border: 1px solid {border_color};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div style="display: flex; gap: 10px;">
+                    <span style="color: #e6f7ff; font-weight: 700;">V{idx + 1}</span>
+                    <span style="color: #8892b0; font-size: 0.8rem; border-left: 1px solid #444; padding-left: 10px;">{len(text)} chars</span>
+                </div>
+                {f'<span style="color: #00ffd0; font-size: 0.75rem; font-weight: bold;">ACTIVE</span>' if is_active else ''}
             </div>
-            {f'<div style="color: #8892b0; font-size: 0.75rem; font-style: italic; margin-bottom: 5px;">Prompt: "{refinement}"</div>' if refinement else ''}
-            <div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4;">
-                {preview[:90]}...
+            {f'<div style="color: #c8b6ff; font-size: 0.75rem; margin-bottom: 8px; font-style: italic;">Refinement: "{ref_prompt}"</div>' if ref_prompt else ''}
+            <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.4; opacity: 0.8;">
+                {text[:100]}...
             </div>
         </div>
         ''', unsafe_allow_html=True)
+            
         else:
             st.markdown('''
             <div class="card-3d" style="text-align: center; padding: 60px 30px;">
