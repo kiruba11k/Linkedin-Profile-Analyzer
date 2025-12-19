@@ -1253,7 +1253,7 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                 for idx, msg_obj in enumerate(st.session_state.generated_messages):
                     is_active = (idx == st.session_state.current_message_index)
         
-        # 1. Extraction: Safely get values
+        # Extraction
                     if isinstance(msg_obj, dict):
                         full_text = msg_obj.get("text", "")
                         refinement = msg_obj.get("refinement_used", "")
@@ -1261,29 +1261,34 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                         full_text = str(msg_obj)
                         refinement = ""
 
-        # 2. Preview: Clean the text preview
+        # Clean preview text
                     text_preview = full_text.replace('\n', ' ').strip()
-                    text_preview = text_preview[:90] + "..." if len(text_preview) > 90 else text_preview
+                    text_preview = text_preview[:80] + "..." if len(text_preview) > 80 else text_preview
 
-        # 3. Styling Logic
+        # Styling
                     border = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
-                    bg = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
-                    status_tag = '<span style="color: #00ffd0; font-size: 0.75rem; font-weight: bold;">VIEWING</span>' if is_active else ''
-                    refinement_tag = f'<div style="color: #c8b6ff; font-size: 0.75rem; margin-bottom: 5px;"><b>Prompt:</b> {refinement}</div>' if refinement else ''
+                    bg = "rgba(0, 180, 216, 0.15)" if is_active else "rgba(255, 255, 255, 0.02)"
+                    active_border = "2px solid #00ffd0" if is_active else f"1px solid {border}"
+        
+        # Create a container-style button
+        # The key is unique to each version so Streamlit knows which one you clicked
+                    if st.button(
+                        f"Version {idx + 1}: {text_preview}", 
+                        key=f"hist_btn_{idx}", 
+                        use_container_width=True,
+                        help="Click to view this version"
+                    ):
+                        st.session_state.current_message_index = idx
+                        st.session_state.regenerate_mode = False
+                        st.rerun()
 
-        # 4. Render (Using a single-line string to prevent indentation bugs)
-                    html_content = (
-                        f'<div style="background: {bg}; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid {border};">'
-                        f'<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">'
-                        f'<div style="color: #e6f7ff; font-size: 0.85rem;"><b>Version {idx + 1}</b> ({len(full_text)} chars)</div>'
-                        f'{status_tag}'
-                        f'</div>'
-                        f'{refinement_tag}'
-                        f'<div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">'
-                        f'{text_preview}'
-                        f'</div></div>'
-                    )
-                    st.markdown(html_content, unsafe_allow_html=True)    
+        # Visual enhancement: Since st.button has its own styling, 
+        # we can put a small indicator below it if it's the active one
+                    if is_active:
+                        st.markdown(
+                            f'<div style="margin-top: -15px; margin-bottom: 10px; padding: 5px 15px; background: #00b4d8; border-radius: 0 0 10px 10px; font-size: 0.7rem; color: white; font-weight: bold; text-align: center;">CURRENTLY VIEWING</div>', 
+                            unsafe_allow_html=True
+                        )
         
         else:
             st.markdown('''
