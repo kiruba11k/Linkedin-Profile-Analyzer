@@ -1250,21 +1250,21 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             # Message History
 
             if len(st.session_state.generated_messages) > 1:
-            st.markdown("---")
-            st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
+                st.markdown("---")
+                st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
     
-            for idx, msg_obj in enumerate(st.session_state.generated_messages):
-                is_active = idx == st.session_state.current_message_index
+                for idx, msg_obj in enumerate(st.session_state.generated_messages):
+                    is_active = idx == st.session_state.current_message_index
         
         # UI Styling
-                border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
-                bg_color = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
+                    border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
+                    bg_color = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
         
         # Data Extraction
-                text = msg_obj.get("text", "") if isinstance(msg_obj, dict) else str(msg_obj)
-                ref_prompt = msg_obj.get("refinement_used", None) if isinstance(msg_obj, dict) else None
+                    text = msg_obj.get("text", "") if isinstance(msg_obj, dict) else str(msg_obj)
+                    ref_prompt = msg_obj.get("refinement_used", None) if isinstance(msg_obj, dict) else None
         
-                st.markdown(f'''
+                    st.markdown(f'''
         <div style="background: {bg_color}; padding: 20px; border-radius: 16px; margin: 12px 0; border: 1px solid {border_color};">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <div style="display: flex; gap: 10px;">
