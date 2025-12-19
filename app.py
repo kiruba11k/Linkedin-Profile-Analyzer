@@ -460,7 +460,6 @@ PROSPECT:
 Name: {prospect_name}
 Recent Post Topic: {prospect_data.get('posts', [{}])[0].get('text', 'No recent posts')[:100]}
 Role: {prospect_role or 'Not specified'}
-Company: {prospect_company or 'Not specified'}
 
 YOU (Sender):
 Name: {sender_first_name}
