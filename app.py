@@ -1226,7 +1226,7 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             instructions,
             current_msg
         )
-                            1
+                            
                             if refined_options:
                                 new_msg = refined_options[0]
             # ADDED 'refinement_used' TO THE DICTIONARY
@@ -1248,36 +1248,44 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                         st.rerun()
             
             # Message History
-
+# Updated Message History (Fixed HTML and AttributeError)
             if len(st.session_state.generated_messages) > 1:
                 st.markdown("---")
                 st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
     
                 for idx, msg_obj in enumerate(st.session_state.generated_messages):
-                    is_active = idx == st.session_state.current_message_index
+                    is_active = (idx == st.session_state.current_message_index)
         
-        # UI Styling
-                    border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
-                    bg_color = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
+        # 1. Extraction: Safely get values
+                    if isinstance(msg_obj, dict):
+                        full_text = msg_obj.get("text", "")
+                        refinement = msg_obj.get("refinement_used", "")
+                    else:
+                        full_text = str(msg_obj)
+                        refinement = ""
+            
+        # 2. Preview: Get first line or first 90 chars
+                    text_preview = full_text.split('\n')[0] if '\n' in full_text else full_text
+                    text_preview = text_preview[:90] + "..." if len(text_preview) > 90 else text_preview
         
-        # Data Extraction
-                    text = msg_obj.get("text", "") if isinstance(msg_obj, dict) else str(msg_obj)
-                    ref_prompt = msg_obj.get("refinement_used", None) if isinstance(msg_obj, dict) else None
-        
+        # 3. Styling Logic
+                    border = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
+                    bg = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
+                    status_tag = '<span style="color: #00ffd0; font-size: 0.75rem; font-weight: bold;">VIEWING</span>' if is_active else ''
+                    refinement_tag = f'<div style="color: #c8b6ff; font-size: 0.75rem; margin-bottom: 5px;"><b>Prompt:</b> {refinement}</div>' if refinement else ''
+
+        # 4. Render
                     st.markdown(f'''
-        <div style="background: {bg_color}; padding: 20px; border-radius: 16px; margin: 12px 0; border: 1px solid {border_color};">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <div style="display: flex; gap: 10px;">
-                    <span style="color: #e6f7ff; font-weight: 700;">V{idx + 1}</span>
-                    <span style="color: #8892b0; font-size: 0.8rem; border-left: 1px solid #444; padding-left: 10px;">{len(text)} chars</span>
+            <div style="background: {bg}; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid {border};">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                    <div style="color: #e6f7ff; font-size: 0.85rem;"><b>Version {idx + 1}</b> ({len(full_text)} chars)</div>
+                    {status_tag}
                 </div>
-                {f'<span style="color: #00ffd0; font-size: 0.75rem; font-weight: bold;">ACTIVE</span>' if is_active else ''}
+                {refinement_tag}
+                <div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+                    {text_preview}
+                </div>
             </div>
-            {f'<div style="color: #c8b6ff; font-size: 0.75rem; margin-bottom: 8px; font-style: italic;">Refinement: "{ref_prompt}"</div>' if ref_prompt else ''}
-            <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.4; opacity: 0.8;">
-                {text[:100]}...
-            </div>
-        </div>
         ''', unsafe_allow_html=True)
             
         else:
