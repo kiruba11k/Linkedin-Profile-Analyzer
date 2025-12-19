@@ -451,12 +451,14 @@ def analyze_and_generate_message(prospect_data: dict, sender_info: dict, api_key
         system_prompt = f'''You are an expert LinkedIn message writer. Generate 3 different connection requests.
 
 RULES:
-1. Each message MUST be exactly 250-300 characters
+1. Each message MUST be exactly between 250 and 300 characters
 2. Complete sentences only - never cut off
 3. Format: Hi [First Name], [hook] + [value alignment] + [connection request]
-4. Hook: Use role/company or recent professional post (no hiring/festival posts)
-5. Sound like a peer, not a student
-6. No flattery words (fascinating, impressive, etc.)
+4. [connection request]: Keep it under 60 characters. 
+   (e.g., "Would love to connect and exchange notes.")
+5. Hook: Use role/company or recent professional post (no hiring/festival posts)
+6. Sound like a peer, not a student
+7. No flattery words (fascinating, impressive, etc.)
 
 PROSPECT:
 Name: {prospect_name}
@@ -481,7 +483,7 @@ Option 3: [250-300 character message]'''
 
 Current message to refine: {previous_message[:200]}
 
-Generate 3 refined versions, each 250-300 characters.'''
+Generate 3 refined versions, each 250 between 300 characters.'''
         else:
             user_prompt = f'''Generate 3 connection messages following all rules above.'''
         
@@ -1224,22 +1226,20 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             instructions,
             current_msg
         )
-        
-                            if refined_options and len(refined_options) > 0:
-            # Pick the first one from the list to add to history
-                                new_msg = refined_options[0] 
-            
+                            1
+                            if refined_options:
+                                new_msg = refined_options[0]
+            # ADDED 'refinement_used' TO THE DICTIONARY
                                 st.session_state.generated_messages.append({
                 "text": new_msg,
                 "char_count": len(new_msg),
-                "option": len(st.session_state.generated_messages) + 1
+                "option": len(st.session_state.generated_messages) + 1,
+                "refinement_used": instructions  # Save the prompt here
             })
             
-            # Update index to show the new message and reset mode
                                 st.session_state.current_message_index = len(st.session_state.generated_messages) - 1
                                 st.session_state.regenerate_mode = False
-                                st.session_state.message_instructions = ""
-                                st.rerun()    
+                                st.rerun()
                     
                     
                     
@@ -1251,40 +1251,40 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             if len(st.session_state.generated_messages) > 1:
                 st.markdown("---")
                 st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
-                
-                for idx, msg in enumerate(st.session_state.generated_messages):
+    
+                for idx, msg_obj in enumerate(st.session_state.generated_messages):
                     is_active = idx == st.session_state.current_message_index
                     border_color = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
                     bg_color = "rgba(0, 180, 216, 0.05)" if is_active else "rgba(255, 255, 255, 0.02)"
-                    
-                    lines = msg.split('\n')
-                    preview = lines[1] if len(lines) > 1 else msg[:80]
-                    
-                    st.markdown(f'''
-                    <div style="
-                        background: {bg_color};
-                        padding: 18px;
-                        border-radius: 16px;
-                        margin: 10px 0;
-                        border: 1px solid {border_color};
-                        cursor: pointer;"
-                        onclick="window.location.href='?select={idx}'">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <div style="display: flex; align-items: center;">
-                                <span style="color: #e6f7ff; font-weight: 600; margin-right: 15px;">
-                                    Version {idx + 1}
-                                </span>
-                                <span style="color: #8892b0; font-size: 0.85rem;">
-                                    {len(msg)} characters
-                                </span>
-                            </div>
-                            {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.9rem;">Active</span>' if is_active else ''}
-                            </div>
-                                <div style="color: #a8c1d1; font-size: 0.9rem; line-height: 1.5;">
-                                    {preview[:90]}...
-                                </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
+        
+        # Safe extraction to prevent AttributeError
+                    full_text = msg_obj.get("text", "") if isinstance(msg_obj, dict) else str(msg_obj)
+                    refinement = msg_obj.get("refinement_used", None) if isinstance(msg_obj, dict) else None
+        
+                    preview_lines = full_text.split('\n')
+                    preview = preview_lines[1] if len(preview_lines) > 1 else full_text[:80]
+        
+        # History Card UI
+                    st.markdown(f'''<div style="
+            background: {bg_color};
+            padding: 18px;
+            border-radius: 16px;
+            margin: 10px 0;
+            border: 1px solid {border_color};">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="color: #e6f7ff; font-weight: 600;">Version {idx + 1}</span>
+                    <span style="color: #8892b0; font-size: 0.8rem;">{len(full_text)} chars</span>
+                    {f'<span style="background: rgba(200, 182, 255, 0.2); color: #c8b6ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem;">Refined</span>' if refinement else ''}
+                </div>
+                {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.8rem;">Viewing Now</span>' if is_active else ''}
+            </div>
+            {f'<div style="color: #8892b0; font-size: 0.75rem; font-style: italic; margin-bottom: 5px;">Prompt: "{refinement}"</div>' if refinement else ''}
+            <div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4;">
+                {preview[:90]}...
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
         else:
             st.markdown('''
             <div class="card-3d" style="text-align: center; padding: 60px 30px;">
