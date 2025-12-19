@@ -448,14 +448,17 @@ RULES:
 1. Each message MUST be exactly between 250 and 300 characters
 2. Complete sentences only - never cut off
 3. Format: Hi [First Name], [hook] + [value alignment] + [connection request]
-4. [connection request]: Keep it under 60 characters. 
+4. DO NOT assume a post was made "at" a company. Just mention the topic.
+5. [connection request]: Keep it under 60 characters. 
    (e.g., "Would love to connect and exchange notes.")
-5. Hook: Use role/company or recent professional post (no hiring/festival posts)
-6. Sound like a peer, not a student
-7. No flattery words (fascinating, impressive, etc.)
+6. Avoid repetitive requests. If you ask to connect in the body, don't repeat it.
+7. Hook: Use role/company or recent professional post (no hiring/festival posts)
+8. Sound like a peer, not a student
+9. No flattery words (fascinating, impressive, etc.)
 
 PROSPECT:
 Name: {prospect_name}
+Recent Post Topic: {prospect_data.get('posts', [{}])[0].get('text', 'No recent posts')[:100]}
 Role: {prospect_role or 'Not specified'}
 Company: {prospect_company or 'Not specified'}
 
@@ -1246,7 +1249,7 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
             if len(st.session_state.generated_messages) > 1:
                 st.markdown("---")
                 st.markdown('<h4 style="color: #e6f7ff; margin-bottom: 20px;">Message History</h4>', unsafe_allow_html=True)
-    
+
                 for idx, msg_obj in enumerate(st.session_state.generated_messages):
                     is_active = (idx == st.session_state.current_message_index)
         
@@ -1257,31 +1260,31 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                     else:
                         full_text = str(msg_obj)
                         refinement = ""
-            
-        # 2. Preview: Get first line or first 90 chars
-                    text_preview = full_text.split('\n')[0] if '\n' in full_text else full_text
+
+        # 2. Preview: Clean the text preview
+                    text_preview = full_text.replace('\n', ' ').strip()
                     text_preview = text_preview[:90] + "..." if len(text_preview) > 90 else text_preview
-        
+
         # 3. Styling Logic
                     border = "#00b4d8" if is_active else "rgba(0, 180, 216, 0.2)"
                     bg = "rgba(0, 180, 216, 0.08)" if is_active else "rgba(255, 255, 255, 0.02)"
                     status_tag = '<span style="color: #00ffd0; font-size: 0.75rem; font-weight: bold;">VIEWING</span>' if is_active else ''
                     refinement_tag = f'<div style="color: #c8b6ff; font-size: 0.75rem; margin-bottom: 5px;"><b>Prompt:</b> {refinement}</div>' if refinement else ''
 
-        # 4. Render
-                    st.markdown(f'''
-                        <div style="background: {bg}; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid {border};">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <div style="color: #e6f7ff; font-size: 0.85rem;"><b>Version {idx + 1}</b> ({len(full_text)} chars)</div>
-                                {status_tag}
-                            </div>
-                            {refinement_tag}
-                            <div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-                            {text_preview}
-                            </div>
-                    </div>
-        ''', unsafe_allow_html=True)
-            
+        # 4. Render (Using a single-line string to prevent indentation bugs)
+                    html_content = (
+                        f'<div style="background: {bg}; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid {border};">'
+                        f'<div style="display: flex; justify-content: space-between; margin-bottom: 8px;">'
+                        f'<div style="color: #e6f7ff; font-size: 0.85rem;"><b>Version {idx + 1}</b> ({len(full_text)} chars)</div>'
+                        f'{status_tag}'
+                        f'</div>'
+                        f'{refinement_tag}'
+                        f'<div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">'
+                        f'{text_preview}'
+                        f'</div></div>'
+                    )
+                    st.markdown(html_content, unsafe_allow_html=True)    
+        
         else:
             st.markdown('''
             <div class="card-3d" style="text-align: center; padding: 60px 30px;">
