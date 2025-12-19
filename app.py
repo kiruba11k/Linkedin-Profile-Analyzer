@@ -1275,8 +1275,7 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="color: #e6f7ff; font-weight: 600;">Version {idx + 1}</span>
                     <span style="color: #8892b0; font-size: 0.8rem;">{len(full_text)} chars</span>
-                    {f'<span style="background: rgba(200, 182, 255, 0.2); color: #c8b6ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem;">Refined</span>' if refinement else ''}
-                </div>
+                    {f'<span style="background: rgba(200, 182, 255, 0.2); color: #c8b6ff; padding: 2px 8px; border-radius: 6px; font-size: 0.7rem;">Refined</span>' if refinement else ''}</div>
                 {f'<span style="color: #00ffd0; font-weight: 600; font-size: 0.8rem;">Viewing Now</span>' if is_active else ''}
             </div>
             {f'<div style="color: #8892b0; font-size: 0.75rem; font-style: italic; margin-bottom: 5px;">Prompt: "{refinement}"</div>' if refinement else ''}
@@ -1303,6 +1302,19 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
     
     with tab3:
         st.markdown('<h3 style="color: #e6f7ff; margin-bottom: 25px;">Profile Data</h3>', unsafe_allow_html=True)
+        st.markdown('<h4 style="color: #00ffd0;">Recent LinkedIn Posts</h4>', unsafe_allow_html=True)
+        posts = st.session_state.profile_data.get('posts', [])
+    
+        if posts:
+            for i, post in enumerate(posts):
+                with st.expander(f"Post {i+1} Details", expanded=(i==0)):
+                    st.markdown(f"**Text:** {post.get('text', 'No text content')}")
+                    st.markdown(f"**URL:** {post.get('url', 'N/A')}")
+                    if post.get('timestamp'):
+                        st.write(f"Date: {datetime.fromtimestamp(post.get('timestamp')).strftime('%Y-%m-%d')}")
+        else:
+            st.info("No recent professional posts were found or they were filtered out bas")
+        st.markdown("----")
         with st.expander("View Prospect Data", expanded=False):
             st.json(st.session_state.profile_data)
         
