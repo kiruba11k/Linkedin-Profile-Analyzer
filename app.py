@@ -1276,16 +1276,16 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
 
         # 4. Render
                     st.markdown(f'''
-            <div style="background: {bg}; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid {border};">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <div style="color: #e6f7ff; font-size: 0.85rem;"><b>Version {idx + 1}</b> ({len(full_text)} chars)</div>
-                    {status_tag}
-                </div>
-                {refinement_tag}
-                <div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
-                    {text_preview}
-                </div>
-            </div>
+                        <div style="background: {bg}; padding: 15px; border-radius: 12px; margin-bottom: 12px; border: 1px solid {border};">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <div style="color: #e6f7ff; font-size: 0.85rem;"><b>Version {idx + 1}</b> ({len(full_text)} chars)</div>
+                                {status_tag}
+                            </div>
+                            {refinement_tag}
+                            <div style="color: #a8c1d1; font-size: 0.85rem; line-height: 1.4; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 8px;">
+                            {text_preview}
+                            </div>
+                    </div>
         ''', unsafe_allow_html=True)
             
         else:
