@@ -510,46 +510,29 @@ Generate 3 refined versions, each 250-300 characters.'''
             timeout=30  # Reduced timeout
         )
         
-        if response.status_code != 200:
-            # Return simple fallback messages faster
-            return generate_fallback_messages(prospect_name, sender_first_name, 
-                                            prospect_role, prospect_company)
+        if response.status_code == 200:
+            content = response.json()["choices"][0]["message"]["content"]
+            messages = []
+            
+            # Robust Parsing: Split by "Option" keyword and clean up
+            parts = content.split("Option")
+            for part in parts:
+                if ":" in part:
+                    msg = part.split(":", 1)[1].strip()
+                    # Remove trailing "Option X" text if LLM hallucinated it
+                    clean_msg = msg.split("Option")[0].strip()
+                    if len(clean_msg) > 10:
+                        messages.append(format_message(clean_msg, prospect_name, sender_name))
+            
+            if len(messages) >= 1:
+                return messages[:3]
         
-        content = response.json()["choices"][0]["message"]["content"].strip()
-        
-        # 7. OPTIMIZED PARSING
-        messages = []
-        lines = content.split('\n')
-        
-        for line in lines:
-            line_lower = line.lower()
-            if line_lower.startswith('option 1:') or line_lower.startswith('option1:'):
-                msg = line.split(':', 1)[1].strip()
-                messages.append(format_message(msg, prospect_name, sender_first_name))
-            elif line_lower.startswith('option 2:') or line_lower.startswith('option2:'):
-                msg = line.split(':', 1)[1].strip()
-                messages.append(format_message(msg, prospect_name, sender_first_name))
-            elif line_lower.startswith('option 3:') or line_lower.startswith('option3:'):
-                msg = line.split(':', 1)[1].strip()
-                messages.append(format_message(msg, prospect_name, sender_first_name))
-        
-        # 8. FILL IN MISSING MESSAGES QUICKLY
-        if len(messages) < 3:
-            fallbacks = generate_fallback_messages(prospect_name, sender_first_name,
-                                                 prospect_role, prospect_company)
-            while len(messages) < 3:
-                messages.append(fallbacks[len(messages)])
-        
-        return messages[:3]
+        # Fallback if API fails or parsing fails
+        return generate_fallback_messages(prospect_name, sender_name, "your field", "your company")
         
     except Exception as e:
-        # Fast fallback
-        return generate_fallback_messages(
-            prospect_name, 
-            sender_first_name,
-            prospect_role,
-            prospect_company
-        )
+        return generate_fallback_messages("there", "Professional", "your field", "your company")
+
 
 def format_message(message: str, prospect_name: str, sender_first_name: str) -> str:
     """Quick formatting helper"""
@@ -1231,23 +1214,34 @@ if st.session_state.profile_data and st.session_state.research_brief and st.sess
                             "Cancel",
                             use_container_width=True
                         )
-                    
                     if refine_submit and instructions:
                         with st.spinner("Refining message..."):
-                            refined_message = analyze_and_generate_message(
-                                st.session_state.profile_data,
-                                st.session_state.sender_info,
-                                groq_api_key,
-                                instructions,
-                                current_msg
-                            )
-                            
-                            if refined_message:
-                                st.session_state.generated_messages.append(refined_message)
+        # The function returns a LIST of 3 options
+                            refined_options = analyze_and_generate_message(
+            st.session_state.profile_data,
+            st.session_state.sender_info,
+            groq_api_key,
+            instructions,
+            current_msg
+        )
+        
+                            if refined_options and len(refined_options) > 0:
+            # Pick the first one from the list to add to history
+                                new_msg = refined_options[0] 
+            
+                                st.session_state.generated_messages.append({
+                "text": new_msg,
+                "char_count": len(new_msg),
+                "option": len(st.session_state.generated_messages) + 1
+            })
+            
+            # Update index to show the new message and reset mode
                                 st.session_state.current_message_index = len(st.session_state.generated_messages) - 1
                                 st.session_state.regenerate_mode = False
                                 st.session_state.message_instructions = ""
-                                st.rerun()
+                                st.rerun()    
+                    
+                    
                     
                     if cancel_refine:
                         st.session_state.regenerate_mode = False
